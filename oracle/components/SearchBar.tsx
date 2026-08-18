@@ -11,7 +11,7 @@ export default function SearchBar() {
     e.preventDefault();
     const q = value.trim();
     if (!q) return;
-    router.push(`/search?q=${encodeURIComponent(q)}`);
+    router.push(`/ask?q=${encodeURIComponent(q)}`);
   }
 
   return (
