@@ -1,54 +1,58 @@
-// Bright Data "Web Scraper API" (formerly Data Collector) wrapper.
+// Bright Data Web Scraper API wrapper (Batch 4).
 // Docs: https://docs.brightdata.com/scraping-automation/web-scraper-api/
 
-const BASE = "https://api.brightdata.com";
+const BRIGHT_DATA_API_KEY = process.env.BRIGHT_DATA_API_KEY;
+const COLLECTOR_ID = process.env.BRIGHT_DATA_COLLECTOR_ID;
 
-function apiKey(): string {
-  const key = process.env.BRIGHT_DATA_API_KEY;
-  if (!key) throw new Error("BRIGHT_DATA_API_KEY is not set");
-  return key;
+function requireKey(): string {
+  if (!BRIGHT_DATA_API_KEY) {
+    throw new Error("BRIGHT_DATA_API_KEY is not set — add it to .env.local");
+  }
+  return BRIGHT_DATA_API_KEY;
 }
 
-function collectorId(): string {
-  const id = process.env.BRIGHT_DATA_COLLECTOR_ID;
-  if (!id) throw new Error("BRIGHT_DATA_COLLECTOR_ID is not set");
-  return id;
+function requireCollectorId(): string {
+  if (!COLLECTOR_ID) {
+    throw new Error("BRIGHT_DATA_COLLECTOR_ID is not set — add it to .env.local");
+  }
+  return COLLECTOR_ID;
 }
 
-function headers(): Record<string, string> {
-  return {
-    Authorization: `Bearer ${apiKey()}`,
-    "Content-Type": "application/json",
-  };
-}
-
-/** Trigger a collector run with optional input (URLs, search terms, etc.). */
-export async function triggerCollector(input?: unknown): Promise<unknown> {
-  const res = await fetch(
-    `${BASE}/dca/trigger?collector=${collectorId()}`,
-    {
-      method: "POST",
-      headers: headers(),
-      body: input ? JSON.stringify(input) : undefined,
+/** Trigger a scrape of a single URL through the Bright Data collector. */
+export async function triggerScrape(url: string): Promise<unknown> {
+  const response = await fetch("https://api.brightdata.com/dca/trigger", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${requireKey()}`,
+      "Content-Type": "application/json",
     },
-  );
-  if (!res.ok) {
-    throw new Error(`Bright Data trigger error ${res.status}: ${await res.text()}`);
+    body: JSON.stringify({
+      collector_id: requireCollectorId(),
+      url,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Bright Data API error: ${response.statusText}`);
   }
-  return res.json();
+  return await response.json();
 }
 
-/** Fetch the latest dataset produced by the collector. */
-export async function getDataset(): Promise<Record<string, unknown>[]> {
-  const res = await fetch(
-    `${BASE}/dca/dataset?collector=${collectorId()}`,
-    { headers: headers() },
-  );
-  if (!res.ok) {
-    throw new Error(`Bright Data dataset error ${res.status}: ${await res.text()}`);
-  }
-  const data = await res.json();
-  return Array.isArray(data) ? data : [];
+/**
+ * Self-healing is performed via the CLI (AI self-heal in place), not the API.
+ * This documents the process; it can be shelled out to in a real run.
+ */
+export async function healScraper(description: string): Promise<string> {
+  const command = `bdata scraper heal ${requireCollectorId()} "${description}"`;
+  console.log(`To heal the scraper, run: ${command}`);
+  return command;
 }
 
-export const brightdata = { triggerCollector, getDataset };
+/** Scrape a historical snapshot of a page from the Wayback Machine. */
+export async function scrapeWaybackSnapshot(
+  year: number,
+  originalUrl: string,
+): Promise<unknown> {
+  const waybackUrl = `https://web.archive.org/web/${year}/${originalUrl}`;
+  return await triggerScrape(waybackUrl);
+}
