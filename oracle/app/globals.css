@@ -1,0 +1,105 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #07070f;
+  --foreground: #f4f4f8;
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+}
+
+body {
+  color: var(--foreground);
+  background-color: var(--background);
+  background-image:
+    radial-gradient(circle at 18% 12%, rgba(157, 78, 221, 0.18), transparent 45%),
+    radial-gradient(circle at 85% 22%, rgba(255, 45, 85, 0.15), transparent 45%),
+    radial-gradient(circle at 50% 95%, rgba(0, 209, 255, 0.12), transparent 50%),
+    radial-gradient(rgba(255, 45, 85, 0.14) 1px, transparent 1px);
+  background-size:
+    auto,
+    auto,
+    auto,
+    26px 26px;
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+  overflow-x: hidden;
+}
+
+/* Glitch effect for display headings */
+.glitch {
+  position: relative;
+  display: inline-block;
+}
+
+.glitch::before,
+.glitch::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.glitch::before {
+  left: 3px;
+  color: #00d1ff;
+  clip-path: inset(0 0 50% 0);
+  animation: glitch-a 2.4s infinite linear alternate-reverse;
+}
+
+.glitch::after {
+  left: -3px;
+  color: #ff2d55;
+  clip-path: inset(50% 0 0 0);
+  animation: glitch-b 2s infinite linear alternate-reverse;
+}
+
+@keyframes glitch-a {
+  0% {
+    clip-path: inset(12% 0 62% 0);
+  }
+  20% {
+    clip-path: inset(45% 0 28% 0);
+  }
+  40% {
+    clip-path: inset(6% 0 72% 0);
+  }
+  60% {
+    clip-path: inset(52% 0 22% 0);
+  }
+  80% {
+    clip-path: inset(24% 0 56% 0);
+  }
+  100% {
+    clip-path: inset(60% 0 14% 0);
+  }
+}
+
+@keyframes glitch-b {
+  0% {
+    clip-path: inset(62% 0 12% 0);
+  }
+  25% {
+    clip-path: inset(22% 0 58% 0);
+  }
+  50% {
+    clip-path: inset(70% 0 6% 0);
+  }
+  75% {
+    clip-path: inset(36% 0 42% 0);
+  }
+  100% {
+    clip-path: inset(12% 0 74% 0);
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
