@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import SpiderWeb, { type SpiderWebNode } from "@/components/SpiderWeb";
+import SpiderWeb, { type DataPoint } from "@/components/SpiderWeb";
 import DimensionalSlider from "@/components/DimensionalSlider";
 import PriceChart, { type PricePoint } from "@/components/PriceChart";
 import TimelineCard from "@/components/TimelineCard";
@@ -26,10 +26,12 @@ export default function TimelineCategoryPage() {
       .catch(() => setPoints([]));
   }, [category]);
 
-  const nodes: SpiderWebNode[] = points.map((p, i) => ({
-    label: `${category} ${p.year}`,
-    year: p.year,
-    value: Math.min(1, 0.2 + (i / Math.max(points.length - 1, 1)) * 0.8),
+  const spiderData: DataPoint[] = points.map((p) => ({
+    era: p.year,
+    category,
+    title: `${slugify(category)} ${p.year}`,
+    price: p.price,
+    availability: "unknown",
   }));
 
   const years = points.map((p) => p.year);
@@ -61,7 +63,7 @@ export default function TimelineCategoryPage() {
 
       <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="aspect-square rounded-2xl border border-foreground/10 bg-panel/60 p-4">
-          <SpiderWeb nodes={nodes} />
+          <SpiderWeb data={spiderData} />
         </div>
         <div className="rounded-2xl border border-foreground/10 bg-panel/60 p-4">
           <PriceChart data={points} />

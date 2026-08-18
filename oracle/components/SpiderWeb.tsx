@@ -3,127 +3,204 @@
 import { useEffect, useRef } from "react";
 import * as d3 from "d3";
 
-export interface SpiderWebNode {
-  label: string;
-  year: number;
-  /** Magnitude 0..1 — how far from the center the node sits. */
-  value: number;
+export interface DataPoint {
+  era: number;
+  category: string;
+  title: string;
+  price: number;
+  availability: string;
 }
 
 interface SpiderWebProps {
-  nodes: SpiderWebNode[];
-  onSelect?: (node: SpiderWebNode) => void;
+  data: DataPoint[];
+  width?: number;
+  height?: number;
 }
 
-const DIM = 520;
-const CENTER = DIM / 2;
-const MAX_RADIUS = DIM / 2 - 40;
-
-/** D3.js radial timeline — a spider web of eras and events. */
-export default function SpiderWeb({ nodes, onSelect }: SpiderWebProps) {
-  const ref = useRef<SVGSVGElement>(null);
-  const onSelectRef = useRef(onSelect);
-  onSelectRef.current = onSelect;
+/** D3 radial timeline — time rings × category strands, with tooltip nodes. */
+export default function SpiderWeb({
+  data,
+  width = 800,
+  height = 800,
+}: SpiderWebProps) {
+  const svgRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
-    if (!ref.current) return;
-    const svg = d3.select(ref.current);
+    const svgEl = svgRef.current;
+    if (!svgEl || !data || data.length === 0) return;
+
+    const svg = d3.select(svgEl);
     svg.selectAll("*").remove();
 
-    if (nodes.length === 0) {
-      svg
-        .append("text")
-        .attr("x", CENTER)
-        .attr("y", CENTER)
-        .attr("text-anchor", "middle")
-        .attr("fill", "#f4f4f8")
-        .attr("opacity", 0.4)
-        .text("No timeline data yet");
-      return;
-    }
+    const radius = Math.min(width, height) / 2 - 50;
+    const centerX = width / 2;
+    const centerY = height / 2;
 
-    const years = nodes.map((n) => n.year);
-    const minYear = d3.min(years) ?? 2000;
-    const maxYear = d3.max(years) ?? 2026;
+    const categories = Array.from(new Set(data.map((d) => d.category)));
+    const years = Array.from(new Set(data.map((d) => d.era))).sort(
+      (a, b) => a - b,
+    );
 
-    const angle = d3
+    const minYear = Math.min(...years);
+    const maxYear = Math.max(...years);
+    const timeScale = d3
       .scaleLinear()
-      .domain([minYear, maxYear])
-      .range([-Math.PI / 2, (3 * Math.PI) / 2]);
+      // Guard against a degenerate single-year domain (scaleLinear NaN).
+      .domain(maxYear > minYear ? [minYear, maxYear] : [minYear, minYear + 1])
+      .range([0, radius]);
 
-    const radius = d3
-      .scaleLinear()
-      .domain([0, 1])
-      .range([24, MAX_RADIUS]);
+    // Evenly-spaced angles. Index-based (not d3.scalePoint over [0, 2π]),
+    // which would collapse the first and last categories onto the same ray.
+    const angleFor = (category: string) => {
+      const i = categories.indexOf(category);
+      return (i / categories.length) * 2 * Math.PI;
+    };
 
-    const g = svg.append("g").attr("transform", `translate(${CENTER},${CENTER})`);
+    const pointFor = (d: DataPoint) => {
+      const a = angleFor(d.category);
+      const r = timeScale(d.era);
+      return { x: centerX + Math.cos(a) * r, y: centerY + Math.sin(a) * r };
+    };
 
-    // Concentric rings (era boundaries)
-    const rings = g.append("g").attr("class", "rings");
-    [0.25, 0.5, 0.75, 1].forEach((r) => {
-      rings
-        .append("circle")
-        .attr("r", radius(r))
-        .attr("fill", "none")
-        .attr("stroke", "#00d1ff")
-        .attr("stroke-opacity", 0.15)
-        .attr("stroke-dasharray", "4 6");
-    });
+    // Keep tiny/zero prices visible (spec's `Math.sqrt(price)/2` → 0 for free items).
+    const nodeRadius = (d: DataPoint) =>
+      Math.max(2, Math.sqrt(Math.max(0, d.price)) / 2);
 
-    // Radial spokes
-    const spokeStep = 12;
-    for (let y = Math.ceil(minYear / spokeStep) * spokeStep; y <= maxYear; y += spokeStep) {
-      const a = angle(y);
-      g.append("line")
-        .attr("x1", 0)
-        .attr("y1", 0)
-        .attr("x2", Math.cos(a) * MAX_RADIUS)
-        .attr("y2", Math.sin(a) * MAX_RADIUS)
-        .attr("stroke", "#9d4edd")
-        .attr("stroke-opacity", 0.18);
-    }
-
-    // Year labels along the outer ring
-    const labelYears = d3
-      .range(Math.ceil(minYear / 10) * 10, maxYear + 1, 10)
-      .filter((y) => y >= minYear);
-    g.selectAll(".year-label")
-      .data(labelYears)
-      .enter()
-      .append("text")
-      .attr("class", "year-label")
-      .attr("x", (y) => Math.cos(angle(y)) * (MAX_RADIUS + 20))
-      .attr("y", (y) => Math.sin(angle(y)) * (MAX_RADIUS + 20))
-      .attr("text-anchor", "middle")
-      .attr("dominant-baseline", "middle")
-      .attr("fill", "#00d1ff")
-      .attr("font-size", 12)
-      .text((y) => `${y}s`);
-
-    // Node points
-    g.selectAll(".node")
-      .data(nodes)
+    // Concentric time rings.
+    svg
+      .selectAll(".time-ring")
+      .data(years)
       .enter()
       .append("circle")
-      .attr("class", "node")
-      .attr("cx", (n) => Math.cos(angle(n.year)) * radius(n.value))
-      .attr("cy", (n) => Math.sin(angle(n.year)) * radius(n.value))
-      .attr("r", 6)
-      .attr("fill", "#ff2d55")
-      .attr("stroke", "#07070f")
+      .attr("cx", centerX)
+      .attr("cy", centerY)
+      .attr("r", (d) => timeScale(d))
+      .attr("fill", "none")
+      .attr("stroke", "#e94560")
+      .attr("stroke-width", 1)
+      .attr("opacity", 0.3);
+
+    // Year labels.
+    svg
+      .selectAll(".year-label")
+      .data(years)
+      .enter()
+      .append("text")
+      .attr("x", centerX)
+      .attr("y", (d) => centerY - timeScale(d) - 5)
+      .attr("text-anchor", "middle")
+      .attr("fill", "#eaeaea")
+      .attr("font-size", "12px")
+      .text((d) => d);
+
+    // Radial category strands.
+    svg
+      .selectAll(".category-strand")
+      .data(categories)
+      .enter()
+      .append("line")
+      .attr("x1", centerX)
+      .attr("y1", centerY)
+      .attr("x2", (d) => centerX + Math.cos(angleFor(d)) * radius)
+      .attr("y2", (d) => centerY + Math.sin(angleFor(d)) * radius)
+      .attr("stroke", "#0f3460")
+      .attr("stroke-width", 2);
+
+    // Category labels.
+    svg
+      .selectAll(".category-label")
+      .data(categories)
+      .enter()
+      .append("text")
+      .attr("x", (d) => centerX + Math.cos(angleFor(d)) * (radius + 20))
+      .attr("y", (d) => centerY + Math.sin(angleFor(d)) * (radius + 20))
+      .attr("text-anchor", "middle")
+      .attr("fill", "#eaeaea")
+      .attr("font-size", "14px")
+      .attr("font-weight", "bold")
+      .text((d) => d);
+
+    // Data nodes + tooltips.
+    svg
+      .selectAll(".data-node")
+      .data(data)
+      .enter()
+      .append("circle")
+      .attr("cx", (d) => pointFor(d).x)
+      .attr("cy", (d) => pointFor(d).y)
+      .attr("r", nodeRadius)
+      .attr("fill", "#e94560")
+      .attr("opacity", 0.7)
+      .attr("stroke", "#fff")
       .attr("stroke-width", 2)
-      .attr("cursor", "pointer")
-      .append("title")
-      .text((n) => `${n.label} · ${n.year}`);
-  }, [nodes]);
+      .style("cursor", "pointer")
+      .on("mouseover", function (event, d) {
+        d3.select(this)
+          .transition()
+          .duration(200)
+          .attr("r", nodeRadius(d) * 1.5)
+          .attr("opacity", 1);
+
+        const p = pointFor(d);
+        const tooltip = svg
+          .append("g")
+          .attr("class", "tooltip")
+          .attr("transform", `translate(${p.x + 10}, ${p.y - 10})`);
+
+        tooltip
+          .append("rect")
+          .attr("width", 200)
+          .attr("height", 80)
+          .attr("fill", "#1a1a2e")
+          .attr("stroke", "#e94560")
+          .attr("stroke-width", 2)
+          .attr("rx", 5);
+
+        tooltip
+          .append("text")
+          .attr("x", 10)
+          .attr("y", 20)
+          .attr("fill", "#eaeaea")
+          .attr("font-size", "12px")
+          .text(d.title);
+
+        tooltip
+          .append("text")
+          .attr("x", 10)
+          .attr("y", 40)
+          .attr("fill", "#e94560")
+          .attr("font-size", "14px")
+          .attr("font-weight", "bold")
+          .text(`$${d.price}`);
+
+        tooltip
+          .append("text")
+          .attr("x", 10)
+          .attr("y", 60)
+          .attr("fill", "#0f3460")
+          .attr("font-size", "12px")
+          .text(`Year: ${d.era}`);
+      })
+      .on("mouseout", function (event, d) {
+        d3.select(this)
+          .transition()
+          .duration(200)
+          .attr("r", nodeRadius(d))
+          .attr("opacity", 0.7);
+        svg.selectAll(".tooltip").remove();
+      });
+  }, [data, width, height]);
 
   return (
-    <svg
-      ref={ref}
-      viewBox={`0 0 ${DIM} ${DIM}`}
-      className="h-full w-full"
-      role="img"
-      aria-label="Spider web timeline"
-    />
+    <div className="spider-web-container h-full w-full">
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${width} ${height}`}
+        className="h-full w-full"
+        style={{ background: "#1a1a2e", borderRadius: "8px" }}
+        role="img"
+        aria-label="Spider web timeline"
+      />
+    </div>
   );
 }
