@@ -12,6 +12,19 @@ interface MediaItem {
   category: string;
 }
 
+const PLACEHOLDER =
+  "data:image/svg+xml," +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="420"><rect width="100%" height="100%" fill="#12122a"/><text x="50%" y="50%" font-size="110" text-anchor="middle" dominant-baseline="central">🕸️</text></svg>`,
+  );
+
+/** Grade an image by era: faded/sepia in the past, vivid in the present. */
+function eraFilter(era: number): string {
+  if (era <= 2006) return "grayscale(0.7) sepia(0.45) contrast(1.05)";
+  if (era <= 2014) return "sepia(0.2) saturate(0.9)";
+  return "saturate(1.15)";
+}
+
 /** A wall of era-tagged images — the "multiverse collage" of a query across time. */
 export default function MediaCollage({ query }: { query: string }) {
   const [items, setItems] = useState<MediaItem[]>([]);
@@ -77,7 +90,7 @@ export default function MediaCollage({ query }: { query: string }) {
               initial={{ opacity: 0, scale: 0.4, rotate: tilt * 4 }}
               animate={{ opacity: 1, scale: 1, rotate: tilt }}
               transition={{
-                delay: i * 0.06,
+                delay: i * 0.05,
                 type: "spring",
                 stiffness: 200,
                 damping: 18,
@@ -100,7 +113,12 @@ export default function MediaCollage({ query }: { query: string }) {
                   src={it.image_url}
                   alt={it.title}
                   loading="lazy"
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = PLACEHOLDER;
+                  }}
                   className="aspect-[4/3] w-full object-cover"
+                  style={{ filter: eraFilter(it.era) }}
                 />
               </motion.span>
 
