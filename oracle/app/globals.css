@@ -2,9 +2,28 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Fonts (@fontsource/bangers, @fontsource/inter) are imported in app/layout.tsx
+ * (JS imports), so no CSS @import is needed here — avoids double-loading.
+ */
+
 :root {
+  /* Spider-Verse theme palette */
+  --spider-red: #e94560;
+  --spider-blue: #0f3460;
+  --spider-navy: #16213e;
+  --spider-dark: #1a1a2e;
+  --spider-text: #eaeaea;
+
+  /* App base tokens */
   --background: #07070f;
   --foreground: #f4f4f8;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
 html,
@@ -26,76 +45,137 @@ body {
     auto,
     auto,
     26px 26px;
-  font-family: Inter, system-ui, -apple-system, sans-serif;
+  font-family: 'Inter', sans-serif;
   overflow-x: hidden;
 }
 
-/* Glitch effect for display headings */
+h1,
+h2,
+h3 {
+  font-family: 'Bangers', cursive;
+  letter-spacing: 2px;
+}
+
+/* Comic book panel style */
+.spider-panel {
+  border: 3px solid #000;
+  box-shadow: 5px 5px 0 var(--spider-red);
+  background: #fff;
+  color: #000;
+  padding: 20px;
+  border-radius: 8px;
+}
+
+/* Halftone dot background */
+.comic-bg {
+  background-image: radial-gradient(circle, #000 1px, transparent 1px);
+  background-size: 10px 10px;
+  opacity: 0.05;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Glitch effect */
 .glitch {
   position: relative;
-  display: inline-block;
+  animation: glitch 0.3s infinite;
 }
 
 .glitch::before,
 .glitch::after {
   content: attr(data-text);
   position: absolute;
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
 }
 
 .glitch::before {
-  left: 3px;
-  color: #00d1ff;
-  clip-path: inset(0 0 50% 0);
-  animation: glitch-a 2.4s infinite linear alternate-reverse;
+  left: 2px;
+  text-shadow: -2px 0 #ff00c1;
+  clip: rect(44px, 450px, 56px, 0);
+  animation: glitch-anim 5s infinite linear alternate-reverse;
 }
 
 .glitch::after {
-  left: -3px;
-  color: #ff2d55;
-  clip-path: inset(50% 0 0 0);
-  animation: glitch-b 2s infinite linear alternate-reverse;
+  left: -2px;
+  text-shadow: -2px 0 #00fff9;
+  clip: rect(44px, 450px, 56px, 0);
+  animation: glitch-anim2 5s infinite linear alternate-reverse;
 }
 
-@keyframes glitch-a {
-  0% {
-    clip-path: inset(12% 0 62% 0);
-  }
-  20% {
-    clip-path: inset(45% 0 28% 0);
-  }
-  40% {
-    clip-path: inset(6% 0 72% 0);
-  }
-  60% {
-    clip-path: inset(52% 0 22% 0);
-  }
-  80% {
-    clip-path: inset(24% 0 56% 0);
-  }
-  100% {
-    clip-path: inset(60% 0 14% 0);
-  }
+@keyframes glitch {
+  0% { transform: translate(0); }
+  20% { transform: translate(-2px, 2px); }
+  40% { transform: translate(-2px, -2px); }
+  60% { transform: translate(2px, 2px); }
+  80% { transform: translate(2px, -2px); }
+  100% { transform: translate(0); }
 }
 
-@keyframes glitch-b {
-  0% {
-    clip-path: inset(62% 0 12% 0);
-  }
-  25% {
-    clip-path: inset(22% 0 58% 0);
-  }
-  50% {
-    clip-path: inset(70% 0 6% 0);
-  }
-  75% {
-    clip-path: inset(36% 0 42% 0);
-  }
-  100% {
-    clip-path: inset(12% 0 74% 0);
-  }
+@keyframes glitch-anim {
+  0% { clip: rect(28px, 9999px, 86px, 0); }
+  10% { clip: rect(112px, 9999px, 76px, 0); }
+  20% { clip: rect(85px, 9999px, 8px, 0); }
+  30% { clip: rect(20px, 9999px, 68px, 0); }
+  40% { clip: rect(67px, 9999px, 95px, 0); }
+  50% { clip: rect(56px, 9999px, 39px, 0); }
+  60% { clip: rect(89px, 9999px, 98px, 0); }
+  70% { clip: rect(4px, 9999px, 78px, 0); }
+  80% { clip: rect(23px, 9999px, 40px, 0); }
+  90% { clip: rect(54px, 9999px, 3px, 0); }
+  100% { clip: rect(62px, 9999px, 72px, 0); }
+}
+
+@keyframes glitch-anim2 {
+  0% { clip: rect(65px, 9999px, 100px, 0); }
+  10% { clip: rect(52px, 9999px, 74px, 0); }
+  20% { clip: rect(79px, 9999px, 85px, 0); }
+  30% { clip: rect(8px, 9999px, 5px, 0); }
+  40% { clip: rect(31px, 9999px, 66px, 0); }
+  50% { clip: rect(27px, 9999px, 28px, 0); }
+  60% { clip: rect(89px, 9999px, 54px, 0); }
+  70% { clip: rect(76px, 9999px, 81px, 0); }
+  80% { clip: rect(3px, 9999px, 35px, 0); }
+  90% { clip: rect(71px, 9999px, 2px, 0); }
+  100% { clip: rect(93px, 9999px, 80px, 0); }
+}
+
+/* Dimensional rift effect */
+.rift {
+  background: linear-gradient(90deg,
+      transparent 0%,
+      var(--spider-red) 50%,
+      transparent 100%);
+  height: 2px;
+  position: relative;
+  animation: rift-pulse 2s infinite;
+}
+
+@keyframes rift-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+/* Sound effect text */
+.sound-effect {
+  font-family: 'Bangers', cursive;
+  font-size: 48px;
+  color: var(--spider-red);
+  text-shadow: 3px 3px 0 #000;
+  transform: rotate(-5deg);
+  animation: pop 0.3s ease-out;
+}
+
+@keyframes pop {
+  0% { transform: scale(0) rotate(-5deg); }
+  50% { transform: scale(1.2) rotate(-5deg); }
+  100% { transform: scale(1) rotate(-5deg); }
 }
 
 @layer utilities {
