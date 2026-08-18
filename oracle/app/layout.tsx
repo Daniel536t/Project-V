@@ -5,11 +5,11 @@ import "@fontsource/inter/500.css";
 import "@fontsource/inter/600.css";
 import "@fontsource/inter/700.css";
 import "./globals.css";
+import SpiderSenseChat from "@/components/SpiderSenseChat";
 
 export const metadata: Metadata = {
-  title: "ORACLE — Web Intelligence Across the Scrape-Verse",
-  description:
-    "25 years of scraped web data, one question away. Price predictions, rarity checks, and cultural timelines — answered.",
+  title: "ORACLE - 25 Years of Web Intelligence",
+  description: "Time-travel through 25 years of data. Ask anything.",
 };
 
 export default function RootLayout({
@@ -17,7 +17,10 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        {children}
+        <SpiderSenseChat />
+      </body>
     </html>
   );
 }
