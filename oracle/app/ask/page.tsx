@@ -18,12 +18,10 @@ export default function AskPage({
       </h1>
       <p className="mt-3 text-foreground/60">
         Price predictions, rarity checks, and timeline lookups — answered from
-        25 years of scraped web data.
+        25 years of scraped web data. Tap the 🕸️ bubble to chat with SENSE.
       </p>
 
-      <div className="mt-10 h-[32rem]">
-        <SpiderSenseChat initialQuestion={q} />
-      </div>
+      <SpiderSenseChat initialQuestion={q} />
     </main>
   );
 }
