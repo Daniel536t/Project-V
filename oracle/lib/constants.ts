@@ -36,6 +36,6 @@ export const MODELS = {
   primary: "thinkingmachines/inkling",
   vision: "meta/muse-glimmer-30b",
   conversational: "nvidia/nemotron-3.5-lightning-30b-a3b",
-  ocr: "nvidia/nemotron-ocr-v2",
+  ocr: "nvidia/nemotron-parse",
   backup: "minimaxai/minimax-m3",
 } as const;
