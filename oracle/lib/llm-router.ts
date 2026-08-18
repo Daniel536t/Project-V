@@ -129,16 +129,18 @@ async function callNemotronLightning(
       {
         role: "system",
         content:
-          "You are ORACLE, a Spider-Verse-themed web intelligence assistant. Answer concisely and with confidence.",
+          "You are SENSE, a fast, helpful AI assistant for ORACLE. Answer questions about historical data and trends concisely. Keep answers under 150 words.",
       },
       {
         role: "user",
         content: context ? `${prompt}\n\nContext: ${JSON.stringify(context)}` : prompt,
       },
     ],
-    { maxTokens: 1024, temperature: 0.4 },
+    // lightning is a reasoning model — it needs budget for chain-of-thought
+    // before the concise answer lands in `content`.
+    { maxTokens: 2048, temperature: 0.7 },
   );
-  return { answer };
+  return { answer, data: context };
 }
 
 /** Deep reasoning for complex text-only queries. */
@@ -149,16 +151,43 @@ async function callInkling(prompt: string, context?: Record<string, unknown>): P
       {
         role: "system",
         content:
-          "You are ORACLE, a web intelligence assistant with 25 years of scraped web data. Reason carefully and cite the era/year when relevant.",
+          "You are SENSE, an AI assistant for ORACLE, a platform that analyzes 25 years of web data (2000-2026)." +
+          "You have access to historical pricing, availability, and trend data across multiple categories (anime, cameras, vinyl, retro games, etc.)." +
+          "When answering: 1. Cite specific years and data points. 2. Explain trends with historical context. 3. Be concise but insightful (2-3 paragraphs max)." +
+          "4. If asked about a product's value, provide a price range and explain the reasoning. 5. Use an enthusiastic, Spider-Verse-inspired tone (but stay professional)." +
+          `Context provided: ${JSON.stringify(context)}`,
+      },
+      {
+        role: "user",
+        content: prompt,
+      },
+    ],
+    { maxTokens: 4096, temperature: 0.7 },
+  );
+  return { answer, data: context };
+}
+
+/** Backup LLM used when primary models fail or hit rate limits. */
+async function callMinimaxM3(
+  prompt: string,
+  context?: Record<string, unknown>,
+): Promise<LLMResponse> {
+  const answer = await callNim(
+    MODELS.backup,
+    [
+      {
+        role: "system",
+        content:
+          "You are SENSE, a helpful AI assistant for ORACLE, analyzing historical web data.",
       },
       {
         role: "user",
         content: context ? `${prompt}\n\nContext: ${JSON.stringify(context)}` : prompt,
       },
     ],
-    { maxTokens: 4096, temperature: 0.5 },
+    { maxTokens: 2048, temperature: 0.7 },
   );
-  return { answer };
+  return { answer, data: context };
 }
 
 /** OCR: extract all text from an image. */
@@ -264,7 +293,16 @@ async function handleMultimodalQuery(
 ): Promise<LLMResponse> {
   const ocrText = await callNemotronOCR(imageUrl);
   const visualAnalysis = await callMuseGlimmer(imageUrl, ocrText);
-  return callInkling(question, { ...(context ?? {}), ocrText, visualAnalysis });
+  const merged = { ...(context ?? {}), ocrText, visualAnalysis };
+  try {
+    return await callInkling(question, merged);
+  } catch (err) {
+    console.error(
+      "Inkling failed on multimodal query, falling back to minimax-m3:",
+      (err as Error).message,
+    );
+    return callMinimaxM3(question, merged);
+  }
 }
 
 /** Route a query to the right model based on complexity and image presence. */
@@ -278,10 +316,18 @@ export async function routeQuery(
   }
 
   const complexity = assessComplexity(input);
-  if (complexity === "simple") {
-    return callNemotronLightning(input, context);
+  try {
+    if (complexity === "simple") {
+      return await callNemotronLightning(input, context);
+    }
+    return await callInkling(input, context);
+  } catch (err) {
+    console.error(
+      "Primary LLM failed, falling back to minimax-m3:",
+      (err as Error).message,
+    );
+    return callMinimaxM3(input, context);
   }
-  return callInkling(input, context);
 }
 
 /* ------------------------------------------------------------------ *
@@ -322,4 +368,11 @@ export async function callLLM(
   return callNim(model, messages, opts);
 }
 
-export const llmRouter = { routeQuery, routeIntent, callLLM };
+export const llmRouter = {
+  routeQuery,
+  routeIntent,
+  callLLM,
+  callInkling,
+  callNemotronLightning,
+  callMinimaxM3,
+};
