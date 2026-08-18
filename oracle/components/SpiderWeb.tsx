@@ -15,6 +15,8 @@ interface SpiderWebProps {
   data: DataPoint[];
   width?: number;
   height?: number;
+  /** Highlight the ring at this year and dim nodes beyond it. */
+  selectedYear?: number;
 }
 
 /** D3 radial timeline — time rings × category strands, with tooltip nodes. */
@@ -22,6 +24,7 @@ export default function SpiderWeb({
   data,
   width = 800,
   height = 800,
+  selectedYear,
 }: SpiderWebProps) {
   const svgRef = useRef<SVGSVGElement>(null);
 
@@ -126,6 +129,7 @@ export default function SpiderWeb({
       .data(data)
       .enter()
       .append("circle")
+      .attr("class", "data-node")
       .attr("cx", (d) => pointFor(d).x)
       .attr("cy", (d) => pointFor(d).y)
       .attr("r", nodeRadius)
@@ -189,7 +193,32 @@ export default function SpiderWeb({
           .attr("opacity", 0.7);
         svg.selectAll(".tooltip").remove();
       });
-  }, [data, width, height]);
+
+    // Highlight the selected year and dim nodes beyond it.
+    if (selectedYear !== undefined) {
+      const ring = svg
+        .append("circle")
+        .attr("class", "selected-ring")
+        .attr("cx", centerX)
+        .attr("cy", centerY)
+        .attr("r", Math.min(timeScale(selectedYear), radius))
+        .attr("fill", "none")
+        .attr("stroke", "#ffe14d")
+        .attr("stroke-width", 3)
+        .attr("stroke-dasharray", "8 5");
+
+      ring
+        .append("animate")
+        .attr("attributeName", "stroke-opacity")
+        .attr("values", "1;0.35;1")
+        .attr("dur", "1.6s")
+        .attr("repeatCount", "indefinite");
+
+      svg
+        .selectAll<SVGCircleElement, DataPoint>(".data-node")
+        .attr("opacity", (d) => (d.era > selectedYear ? 0.18 : 0.7));
+    }
+  }, [data, width, height, selectedYear]);
 
   return (
     <div className="spider-web-container h-full w-full">

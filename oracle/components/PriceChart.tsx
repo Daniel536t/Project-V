@@ -65,16 +65,32 @@ export default function PriceChart({ data }: PriceChartProps) {
     g.append("path")
       .datum(data)
       .attr("fill", "url(#priceGradient)")
-      .attr("opacity", 0.35)
-      .attr("d", area);
+      .attr("opacity", 0)
+      .attr("d", area)
+      .transition()
+      .duration(1300)
+      .attr("opacity", 0.35);
 
-    // Line
-    g.append("path")
+    // Line (animated draw-in)
+    const linePath = g
+      .append("path")
       .datum(data)
       .attr("fill", "none")
       .attr("stroke", "#ff2d55")
       .attr("stroke-width", 2.5)
       .attr("d", line);
+
+    const length =
+      (linePath.node() as SVGPathElement | null)?.getTotalLength() ?? 0;
+    if (length > 0) {
+      linePath
+        .attr("stroke-dasharray", `${length} ${length}`)
+        .attr("stroke-dashoffset", length)
+        .transition()
+        .duration(1300)
+        .ease(d3.easeCubicOut)
+        .attr("stroke-dashoffset", 0);
+    }
 
     // Dots
     g.selectAll(".dot")
