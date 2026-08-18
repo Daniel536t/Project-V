@@ -291,7 +291,18 @@ async function handleMultimodalQuery(
   imageUrl: string,
   context?: Record<string, unknown>,
 ): Promise<LLMResponse> {
-  const ocrText = await callNemotronOCR(imageUrl);
+  // OCR is best-effort: if it fails (no text, model hiccup), continue with
+  // vision-only analysis rather than failing the whole valuation.
+  let ocrText = "";
+  try {
+    ocrText = await callNemotronOCR(imageUrl);
+  } catch (err) {
+    console.warn(
+      "OCR failed, continuing with vision-only analysis:",
+      (err as Error).message,
+    );
+  }
+
   const visualAnalysis = await callMuseGlimmer(imageUrl, ocrText);
   const merged = { ...(context ?? {}), ocrText, visualAnalysis };
   try {
