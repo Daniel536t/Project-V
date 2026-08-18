@@ -31,6 +31,9 @@ function AskContent() {
 
   const [answer, setAnswer] = useState("");
   const [data, setData] = useState<DataPoint[]>([]);
+  const [sources, setSources] = useState<
+    { title: string; url: string; snippet: string }[]
+  >([]);
   const [loading, setLoading] = useState(Boolean(query));
 
   useEffect(() => {
@@ -55,6 +58,7 @@ function AskContent() {
         result.answer ?? result.error ?? "The Oracle is silent… try again.",
       );
       setData(toDataPoints(result.data?.historicalData));
+      setSources(result.data?.webResults ?? []);
     } catch (error) {
       console.error("Error:", error);
       setAnswer("Sorry, I encountered an error.");
@@ -101,6 +105,39 @@ function AskContent() {
         >
           <p className="text-lg leading-relaxed">{answer}</p>
         </motion.div>
+
+        {sources.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.25 }}
+            className="mb-8"
+          >
+            <h2 className="chromatic mb-3 text-xl">
+              🕷️ SOURCES · POWERED BY BRIGHT DATA
+            </h2>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {sources.map((s, i) => (
+                <a
+                  key={`${s.url}-${i}`}
+                  href={s.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="group block rounded-lg border-2 border-black bg-panel p-3 shadow-[3px_3px_0_#05050a] transition hover:border-spider-pink"
+                >
+                  <span className="block text-sm font-semibold text-foreground group-hover:text-spider-pink">
+                    {s.title}
+                  </span>
+                  {s.snippet && (
+                    <span className="mt-0.5 block text-xs text-foreground/60 line-clamp-2">
+                      {s.snippet}
+                    </span>
+                  )}
+                </a>
+              ))}
+            </div>
+          </motion.div>
+        )}
 
         <MediaCollage query={query} />
 

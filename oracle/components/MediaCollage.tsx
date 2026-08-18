@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 
 interface MediaItem {
-  era: number;
+  era: number | null;
   title: string;
   image_url: string;
   article_url: string;
@@ -37,8 +37,10 @@ const SOURCE_LABEL: Record<string, string> = {
   demo: "DEMO DATA",
 };
 
-/** Grade an image by era: faded/sepia in the past, vivid in the present. */
-function eraFilter(era: number): string {
+/** Grade an image by era: faded/sepia in the past, vivid in the present.
+ * Live results (no real date) stay vivid — we never fake aging. */
+function eraFilter(era: number | null): string {
+  if (era == null) return "saturate(1.1)";
   if (era <= 2006) return "grayscale(0.7) sepia(0.45) contrast(1.05)";
   if (era <= 2014) return "sepia(0.2) saturate(0.9)";
   return "saturate(1.15)";
@@ -94,12 +96,15 @@ export default function MediaCollage({ query }: { query: string }) {
             🌐 MULTIVERSE COLLAGE
           </h2>
           <p className="mt-1 text-sm text-foreground/60">
-            “{query}” — surfacing across 26 years. Click a panel to step into
-            its era.
+            “{query}” —{" "}
+            {source === "db" ? "across the scraped archive" : "live search results"}
+            . Click a panel to open its source.
           </p>
         </div>
         <span className="inline-block rounded-full border-2 border-black bg-spider-blue px-3 py-1 font-display text-xs tracking-wider text-black shadow-[3px_3px_0_#05050a]">
           {SOURCE_LABEL[source] ?? source}
+          {images.length > 0 ? ` · ${images.length} IMAGES` : ""}
+          {articles.length > 0 ? ` · ${articles.length} ARTICLES` : ""}
         </span>
       </div>
 
@@ -151,7 +156,7 @@ export default function MediaCollage({ query }: { query: string }) {
                 </motion.span>
 
                 <span className="absolute left-1.5 top-1.5 rounded-md border-2 border-black bg-spider-yellow px-2 py-0.5 font-display text-sm tracking-wider text-black shadow-[2px_2px_0_#05050a]">
-                  {it.era}
+                  {it.era ?? "LIVE"}
                 </span>
 
                 <span className="halftone pointer-events-none absolute inset-0 opacity-30 mix-blend-overlay" />

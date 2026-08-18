@@ -8,7 +8,8 @@ import {
 export const runtime = "nodejs";
 
 export interface MediaItem {
-  era: number;
+  /** Real year when known; null = live result with no historical date. */
+  era: number | null;
   title: string;
   image_url: string;
   article_url: string;
@@ -53,7 +54,7 @@ export async function GET(request: Request) {
         .map((r) => {
           const meta = (r.metadata ?? {}) as Record<string, unknown>;
           return {
-            era: Number(r.era) || 0,
+            era: Number(r.era) || null,
             title: String(r.title ?? q),
             image_url: String(meta.image_url ?? ""),
             article_url: String(meta.article_url ?? r.source_url ?? ""),
@@ -126,8 +127,10 @@ export async function GET(request: Request) {
 }
 
 function toImageItems(imgs: BrightImageResult[], q: string): MediaItem[] {
-  return imgs.slice(0, 14).map((im, i, arr) => ({
-    era: 2000 + Math.round((i / Math.max(arr.length - 1, 1)) * 26),
+  return imgs.slice(0, 14).map((im, i) => ({
+    // Live search results are "now" — only stamp a year when the source
+    // caption explicitly carries a date. Never fabricate one.
+    era: extractYear(im.source, im.title),
     title: im.title || `${q} · result ${i + 1}`,
     image_url: im.url,
     article_url: im.source_url || im.url,
@@ -179,8 +182,8 @@ async function commonsItems(q: string): Promise<MediaItem[]> {
     }))
     .filter((x) => x.url);
 
-  return withImages.slice(0, 14).map((x, i, arr) => ({
-    era: 2000 + Math.round((i / Math.max(arr.length - 1, 1)) * 26),
+  return withImages.slice(0, 14).map((x) => ({
+    era: extractYear(x.title),
     title: cleanTitle(x.title),
     image_url: x.url,
     article_url:
@@ -214,6 +217,25 @@ async function fetchCommons(url: string): Promise<Response> {
   throw new Error("commons fetch failed");
 }
 
+/** Extract a year from a caption only when it is a clear date (month+year,
+ * © year, or (year)). This avoids false positives like model numbers. */
+function extractYear(...texts: Array<string | null | undefined>): number | null {
+  const months = "jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec";
+  for (const t of texts) {
+    if (!t) continue;
+    const dated = t.match(
+      new RegExp(
+        `\\b(?:${months})[a-z]*\\.?\\s+\\d{1,2},?\\s+(19\\d{2}|20\\d{2})\\b`,
+        "i",
+      ),
+    );
+    if (dated) return Number(dated[1]);
+    const labeled = t.match(/©\s*(19\d{2}|20\d{2})|\((19\d{2}|20\d{2})\)/);
+    if (labeled) return Number(labeled[1] ?? labeled[2]);
+  }
+  return null;
+}
+
 function keyword(q: string): string {
   const words = q
     .toLowerCase()
@@ -232,12 +254,12 @@ function cleanTitle(t: string): string {
 }
 
 function placeholderItems(q: string): MediaItem[] {
-  const years = [2000, 2002, 2004, 2006, 2008, 2010, 2012, 2014, 2016, 2018, 2020, 2022, 2024, 2026];
-  return years.map((y, i) => ({
-    era: y,
-    title: `${q} — ${y} snapshot`,
-    image_url: `https://picsum.photos/seed/oracle-${y}-${i}/600/420`,
-    article_url: `https://web.archive.org/web/${y}/https://en.wikipedia.org/wiki/${encodeURIComponent(q)}`,
+  // Last-resort demo imagery — clearly labeled, no fake years.
+  return Array.from({ length: 8 }, (_, i) => ({
+    era: null,
+    title: `${q} — result ${i + 1}`,
+    image_url: `https://picsum.photos/seed/oracle-${i}-${q.length}/600/420`,
+    article_url: `https://en.wikipedia.org/wiki/${encodeURIComponent(q)}`,
     source: "demo",
     category: "general",
   }));

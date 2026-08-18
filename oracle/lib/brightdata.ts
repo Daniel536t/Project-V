@@ -62,6 +62,16 @@ export async function scrapeWaybackSnapshot(
 const SERP_BASE = "https://api.brightdata.com/request";
 const SERP_ZONE = process.env.BRIGHT_DATA_SERP_ZONE;
 
+// In-memory TTL cache — live search costs Bright Data credit, so reuse results
+// for a few minutes. (Single-process cache: fine for pm2; on serverless it is
+// per-instance and short-lived.)
+interface CacheEntry {
+  result: BrightSearchResult;
+  expires: number;
+}
+const serpCache = new Map<string, CacheEntry>();
+const SERP_CACHE_TTL_MS = 10 * 60 * 1000;
+
 export interface BrightWebResult {
   title: string;
   url: string;
@@ -72,6 +82,8 @@ export interface BrightImageResult {
   title: string;
   url: string;
   source_url: string;
+  /** Raw source caption (may contain a date). */
+  source?: string;
 }
 
 export interface BrightSearchResult {
@@ -93,6 +105,10 @@ export async function searchBrightData(
     );
   }
 
+  const key = query.trim().toLowerCase();
+  const hit = serpCache.get(key);
+  if (hit && hit.expires > Date.now()) return hit.result;
+
   const q = encodeURIComponent(query);
   // Web search + Google Image search. `udm=2` is Google's current image tab
   // (the old `tbm=isch` returns an empty body through the SERP parser).
@@ -101,7 +117,9 @@ export async function searchBrightData(
     serpRequest(`https://www.google.com/search?q=${q}&udm=2&hl=en&gl=us`),
   ]);
 
-  return { web: parseWeb(web), images: parseImages(images) };
+  const result = { web: parseWeb(web), images: parseImages(images) };
+  serpCache.set(key, { result, expires: Date.now() + SERP_CACHE_TTL_MS });
+  return result;
 }
 
 /**
@@ -158,7 +176,8 @@ function parseImages(body: Record<string, unknown>): BrightImageResult[] {
       const url = firstString(r.original_image, r.image_url, r.thumbnail);
       const source_url = firstString(r.link, r.source_url, r.source);
       const title = firstString(r.image_alt, r.title, r.source);
-      return { title, url, source_url };
+      const source = firstString(r.source);
+      return { title, url, source_url, source };
     })
     .filter((r) => r.url.startsWith("http"));
 }
