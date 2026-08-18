@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import SpiderWeb, { type DataPoint } from "@/components/SpiderWeb";
+import MediaCollage from "@/components/MediaCollage";
 
 export default function AskPage() {
   return (
@@ -100,6 +101,8 @@ function AskContent() {
         >
           <p className="text-lg leading-relaxed">{answer}</p>
         </motion.div>
+
+        <MediaCollage query={query} />
 
         {data.length > 0 && (
           <motion.div
