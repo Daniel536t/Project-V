@@ -3,20 +3,35 @@
 @tailwind utilities;
 
 /*
- * Fonts (@fontsource/bangers, @fontsource/inter) are imported in app/layout.tsx
- * (JS imports), so no CSS @import is needed here — avoids double-loading.
+ * ORACLE — "Into the Scrape-Verse" design system.
+ * The aesthetic is Spider-Man: Into the Spider-Verse:
+ *   - Ben-Day halftone dots
+ *   - CMYK print misregistration (chromatic RGB split)
+ *   - comic panels: thick black outlines + hard offset shadows
+ *   - onomatopoeia ("THWIP!", "POW!", "KRAK!")
+ *   - dimensional rifts / the multiverse portal
+ *   - punchy, frame-by-frame motion
  */
 
 :root {
-  /* Spider-Verse theme palette */
-  --spider-red: #e94560;
-  --spider-blue: #0f3460;
-  --spider-navy: #16213e;
-  --spider-dark: #1a1a2e;
-  --spider-text: #eaeaea;
+  /* Space */
+  --ink: #06060f;
+  --space: #0e0e1f;
+  --panel: #12122a;
+  --spider-navy: #16162f;
 
-  /* App base tokens */
-  --background: #07070f;
+  /* Comic accents */
+  --spider-red: #ff2d55;      /* hot comic red-pink */
+  --spider-pink: #ff2ec4;     /* magenta */
+  --spider-blue: #00d1ff;     /* electric cyan */
+  --spider-purple: #9d4edd;   /* violet */
+  --spider-yellow: #ffe14d;   /* acid yellow */
+
+  --spider-text: #f4f4f8;
+  --comic-outline: #05050a;
+
+  /* App base tokens (keep tailwind config in sync) */
+  --background: #06060f;
   --foreground: #f4f4f8;
 }
 
@@ -35,42 +50,101 @@ body {
 body {
   color: var(--foreground);
   background-color: var(--background);
-  background-image:
-    radial-gradient(circle at 18% 12%, rgba(157, 78, 221, 0.18), transparent 45%),
-    radial-gradient(circle at 85% 22%, rgba(255, 45, 85, 0.15), transparent 45%),
-    radial-gradient(circle at 50% 95%, rgba(0, 209, 255, 0.12), transparent 50%),
-    radial-gradient(rgba(255, 45, 85, 0.14) 1px, transparent 1px);
-  background-size:
-    auto,
-    auto,
-    auto,
-    26px 26px;
-  font-family: 'Inter', sans-serif;
+  font-family: "Inter", sans-serif;
   overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
 }
 
 h1,
 h2,
 h3 {
-  font-family: 'Bangers', cursive;
+  font-family: "Bangers", cursive;
   letter-spacing: 2px;
+  font-weight: 400;
 }
 
-/* Comic book panel style */
+::selection {
+  background: var(--spider-pink);
+  color: #05050a;
+}
+
+/* ------------------------------------------------------------------ *
+ * Comic panels
+ * ------------------------------------------------------------------ */
+
+/* Classic panel: white page, thick black outline, hard offset shadow. */
 .spider-panel {
-  border: 3px solid #000;
-  box-shadow: 5px 5px 0 var(--spider-red);
+  position: relative;
+  border: 3px solid var(--comic-outline);
+  box-shadow: 6px 6px 0 var(--comic-outline);
   background: #fff;
-  color: #000;
-  padding: 20px;
-  border-radius: 8px;
+  color: #05050a;
+  padding: 24px;
+  border-radius: 10px;
 }
 
-/* Halftone dot background */
+/* Variant with a second colored offset (the signature Spider-Verse look). */
+.comic-panel {
+  position: relative;
+  border: 3px solid var(--comic-outline);
+  border-radius: 12px;
+  background: #fff;
+  color: #05050a;
+  padding: 24px;
+  box-shadow:
+    6px 6px 0 var(--comic-outline),
+    12px 12px 0 var(--spider-red);
+  transition: transform 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.2),
+    box-shadow 0.18s ease;
+}
+.comic-panel:hover {
+  transform: translate(-2px, -2px) rotate(0deg);
+  box-shadow:
+    8px 8px 0 var(--comic-outline),
+    16px 16px 0 var(--spider-pink);
+}
+.comic-panel--tilt {
+  transform: rotate(-1.4deg);
+}
+.comic-panel--tilt-r {
+  transform: rotate(1.2deg);
+}
+.comic-panel--tilt:hover,
+.comic-panel--tilt-r:hover {
+  transform: rotate(0deg) translate(-2px, -2px);
+}
+.comic-panel--cyan {
+  box-shadow: 6px 6px 0 var(--comic-outline), 12px 12px 0 var(--spider-blue);
+}
+.comic-panel--purple {
+  box-shadow: 6px 6px 0 var(--comic-outline), 12px 12px 0 var(--spider-purple);
+}
+
+/* ------------------------------------------------------------------ *
+ * Halftone / Ben-Day dots
+ * ------------------------------------------------------------------ */
+
+.halftone {
+  background-image: radial-gradient(
+    circle,
+    rgba(255, 255, 255, 0.14) 1px,
+    transparent 1.6px
+  );
+  background-size: 12px 12px;
+}
+.halftone--dots {
+  background-image:
+    radial-gradient(circle, rgba(255, 255, 255, 0.16) 1px, transparent 1.6px),
+    radial-gradient(circle, rgba(255, 46, 196, 0.12) 1px, transparent 1.6px);
+  background-size: 14px 14px, 26px 26px;
+  background-position: 0 0, 7px 7px;
+}
+
+/* The comic page dot field used as a full-screen overlay. */
 .comic-bg {
-  background-image: radial-gradient(circle, #000 1px, transparent 1px);
-  background-size: 10px 10px;
-  opacity: 0.05;
+  background-image: radial-gradient(circle, #000 1px, transparent 1.4px);
+  background-size: 11px 11px;
+  opacity: 0.07;
   position: absolute;
   top: 0;
   left: 0;
@@ -79,12 +153,30 @@ h3 {
   pointer-events: none;
 }
 
-/* Glitch effect */
-.glitch {
-  position: relative;
-  animation: glitch 0.3s infinite;
+/* ------------------------------------------------------------------ *
+ * CMYK print misregistration (chromatic aberration)
+ * ------------------------------------------------------------------ */
+
+.chromatic {
+  text-shadow:
+    2px 0 rgba(255, 45, 85, 0.6),
+    -2px 0 rgba(0, 209, 255, 0.6);
+}
+.chromatic--hard {
+  text-shadow:
+    3px 0 rgba(255, 45, 85, 0.75),
+    -3px 0 rgba(0, 209, 255, 0.75),
+    0 3px rgba(255, 46, 196, 0.55);
 }
 
+/* ------------------------------------------------------------------ *
+ * Glitch (the multiverse stutter)
+ * ------------------------------------------------------------------ */
+
+.glitch {
+  position: relative;
+  animation: glitch 3.2s infinite steps(1);
+}
 .glitch::before,
 .glitch::after {
   content: attr(data-text);
@@ -93,93 +185,308 @@ h3 {
   left: 0;
   width: 100%;
   height: 100%;
+  pointer-events: none;
 }
-
 .glitch::before {
   left: 2px;
-  text-shadow: -2px 0 #ff00c1;
-  clip: rect(44px, 450px, 56px, 0);
-  animation: glitch-anim 5s infinite linear alternate-reverse;
+  text-shadow: -2px 0 #ff2ec4;
+  clip: rect(0, 9999px, 0, 0);
+  animation: glitch-anim 3.1s infinite linear alternate-reverse;
 }
-
 .glitch::after {
   left: -2px;
-  text-shadow: -2px 0 #00fff9;
-  clip: rect(44px, 450px, 56px, 0);
-  animation: glitch-anim2 5s infinite linear alternate-reverse;
+  text-shadow: -2px 0 #00d1ff;
+  clip: rect(0, 9999px, 0, 0);
+  animation: glitch-anim2 3.7s infinite linear alternate-reverse;
 }
 
 @keyframes glitch {
-  0% { transform: translate(0); }
-  20% { transform: translate(-2px, 2px); }
-  40% { transform: translate(-2px, -2px); }
-  60% { transform: translate(2px, 2px); }
-  80% { transform: translate(2px, -2px); }
-  100% { transform: translate(0); }
+  0%, 87%, 100% {
+    transform: translate(0);
+  }
+  88% {
+    transform: translate(-3px, 2px);
+  }
+  90% {
+    transform: translate(3px, -2px);
+  }
+  92% {
+    transform: translate(-2px, -2px);
+  }
+  94% {
+    transform: translate(2px, 2px);
+  }
+  96% {
+    transform: translate(0);
+  }
 }
 
 @keyframes glitch-anim {
-  0% { clip: rect(28px, 9999px, 86px, 0); }
-  10% { clip: rect(112px, 9999px, 76px, 0); }
-  20% { clip: rect(85px, 9999px, 8px, 0); }
-  30% { clip: rect(20px, 9999px, 68px, 0); }
-  40% { clip: rect(67px, 9999px, 95px, 0); }
-  50% { clip: rect(56px, 9999px, 39px, 0); }
-  60% { clip: rect(89px, 9999px, 98px, 0); }
-  70% { clip: rect(4px, 9999px, 78px, 0); }
-  80% { clip: rect(23px, 9999px, 40px, 0); }
-  90% { clip: rect(54px, 9999px, 3px, 0); }
-  100% { clip: rect(62px, 9999px, 72px, 0); }
+  0%, 85% {
+    clip: rect(0, 9999px, 0, 0);
+  }
+  86% {
+    clip: rect(28px, 9999px, 86px, 0);
+  }
+  88% {
+    clip: rect(112px, 9999px, 76px, 0);
+  }
+  90% {
+    clip: rect(85px, 9999px, 8px, 0);
+  }
+  92% {
+    clip: rect(20px, 9999px, 68px, 0);
+  }
+  94% {
+    clip: rect(67px, 9999px, 95px, 0);
+  }
+  96% {
+    clip: rect(56px, 9999px, 39px, 0);
+  }
+  100% {
+    clip: rect(0, 9999px, 0, 0);
+  }
 }
 
 @keyframes glitch-anim2 {
-  0% { clip: rect(65px, 9999px, 100px, 0); }
-  10% { clip: rect(52px, 9999px, 74px, 0); }
-  20% { clip: rect(79px, 9999px, 85px, 0); }
-  30% { clip: rect(8px, 9999px, 5px, 0); }
-  40% { clip: rect(31px, 9999px, 66px, 0); }
-  50% { clip: rect(27px, 9999px, 28px, 0); }
-  60% { clip: rect(89px, 9999px, 54px, 0); }
-  70% { clip: rect(76px, 9999px, 81px, 0); }
-  80% { clip: rect(3px, 9999px, 35px, 0); }
-  90% { clip: rect(71px, 9999px, 2px, 0); }
-  100% { clip: rect(93px, 9999px, 80px, 0); }
+  0%, 85% {
+    clip: rect(0, 9999px, 0, 0);
+  }
+  86% {
+    clip: rect(65px, 9999px, 100px, 0);
+  }
+  88% {
+    clip: rect(52px, 9999px, 74px, 0);
+  }
+  90% {
+    clip: rect(79px, 9999px, 85px, 0);
+  }
+  92% {
+    clip: rect(8px, 9999px, 5px, 0);
+  }
+  94% {
+    clip: rect(31px, 9999px, 66px, 0);
+  }
+  96% {
+    clip: rect(89px, 9999px, 54px, 0);
+  }
+  100% {
+    clip: rect(0, 9999px, 0, 0);
+  }
 }
 
-/* Dimensional rift effect */
+/* ------------------------------------------------------------------ *
+ * Onomatopoeia — comic sound effects
+ * ------------------------------------------------------------------ */
+
+.onomatopoeia {
+  display: inline-block;
+  font-family: "Bangers", cursive;
+  letter-spacing: 2px;
+  color: var(--spider-yellow);
+  -webkit-text-stroke: 2px var(--comic-outline);
+  text-shadow: 4px 4px 0 var(--spider-red);
+  transform: rotate(-8deg);
+  animation: sound-pop 0.5s cubic-bezier(0.2, 2, 0.4, 1) both;
+}
+.onomatopoeia--pink {
+  color: var(--spider-pink);
+  text-shadow: 4px 4px 0 var(--spider-blue);
+}
+.onomatopoeia--cyan {
+  color: var(--spider-blue);
+  text-shadow: 4px 4px 0 var(--spider-purple);
+}
+
+@keyframes sound-pop {
+  0% {
+    transform: scale(0) rotate(-30deg);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.4) rotate(-6deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) rotate(-8deg);
+    opacity: 1;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Dimensional rift + portal
+ * ------------------------------------------------------------------ */
+
 .rift {
-  background: linear-gradient(90deg,
-      transparent 0%,
-      var(--spider-red) 50%,
-      transparent 100%);
-  height: 2px;
   position: relative;
-  animation: rift-pulse 2s infinite;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--spider-pink) 50%,
+    var(--spider-blue) 100%
+  );
+  height: 3px;
+  box-shadow: 0 0 18px rgba(255, 46, 196, 0.7);
+  animation: rift-pulse 2.2s infinite;
 }
 
 @keyframes rift-pulse {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 1; }
+  0%, 100% {
+    opacity: 0.45;
+    transform: scaleX(0.94);
+  }
+  50% {
+    opacity: 1;
+    transform: scaleX(1);
+  }
 }
 
-/* Sound effect text */
-.sound-effect {
-  font-family: 'Bangers', cursive;
-  font-size: 48px;
-  color: var(--spider-red);
-  text-shadow: 3px 3px 0 #000;
-  transform: rotate(-5deg);
-  animation: pop 0.3s ease-out;
+/* The multiverse portal: concentric glowing rings. */
+.portal {
+  position: relative;
+  width: 260px;
+  height: 260px;
+  border-radius: 50%;
+  background:
+    radial-gradient(
+      circle,
+      rgba(255, 46, 196, 0.55) 0%,
+      rgba(157, 78, 221, 0.35) 35%,
+      rgba(0, 209, 255, 0.2) 55%,
+      transparent 70%
+    );
+  box-shadow:
+    0 0 40px rgba(255, 46, 196, 0.5),
+    0 0 90px rgba(0, 209, 255, 0.3);
+  animation: portal-spin 14s linear infinite;
+}
+.portal::before,
+.portal::after {
+  content: "";
+  position: absolute;
+  inset: 18%;
+  border-radius: 50%;
+  border: 2px dashed rgba(255, 255, 255, 0.5);
+}
+.portal::after {
+  inset: 34%;
+  border-style: solid;
+  border-color: rgba(255, 46, 196, 0.6);
+  animation: portal-pulse 2.4s ease-in-out infinite;
 }
 
-@keyframes pop {
-  0% { transform: scale(0) rotate(-5deg); }
-  50% { transform: scale(1.2) rotate(-5deg); }
-  100% { transform: scale(1) rotate(-5deg); }
+@keyframes portal-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes portal-pulse {
+  0%, 100% {
+    transform: scale(0.92);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Speed lines + scanlines
+ * ------------------------------------------------------------------ */
+
+.speedlines {
+  background: repeating-conic-gradient(
+    from 0deg,
+    rgba(255, 255, 255, 0.05) 0deg 2deg,
+    transparent 2deg 14deg
+  );
+  -webkit-mask-image: radial-gradient(circle, transparent 25%, #000 85%);
+  mask-image: radial-gradient(circle, transparent 25%, #000 85%);
+}
+
+.scanlines {
+  position: relative;
+}
+.scanlines::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 0.03) 0 1px,
+    transparent 1px 4px
+  );
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------------ *
+ * Speech bubble (comic dialogue)
+ * ------------------------------------------------------------------ */
+
+.speech-bubble {
+  position: relative;
+  background: #fff;
+  color: #05050a;
+  border: 3px solid var(--comic-outline);
+  border-radius: 14px;
+  padding: 16px 20px;
+  box-shadow: 5px 5px 0 var(--comic-outline);
+}
+.speech-bubble::after {
+  content: "";
+  position: absolute;
+  left: 28px;
+  bottom: -16px;
+  width: 0;
+  height: 0;
+  border: 8px solid transparent;
+  border-top-color: var(--comic-outline);
+}
+
+/* ------------------------------------------------------------------ *
+ * Buttons + misc
+ * ------------------------------------------------------------------ */
+
+.comic-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: "Bangers", cursive;
+  letter-spacing: 1.5px;
+  color: #fff;
+  background: var(--spider-red);
+  border: 3px solid var(--comic-outline);
+  border-radius: 10px;
+  padding: 12px 22px;
+  font-size: 1.15rem;
+  box-shadow: 4px 4px 0 var(--comic-outline);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+  cursor: pointer;
+}
+.comic-btn:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 var(--comic-outline);
+  background: var(--spider-pink);
+}
+.comic-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--comic-outline);
+}
+.comic-btn--cyan {
+  background: var(--spider-blue);
+  color: #05050a;
+}
+.comic-btn--cyan:hover {
+  background: #5ce6ff;
 }
 
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+  .text-stroke {
+    -webkit-text-stroke: 2px var(--comic-outline);
   }
 }

@@ -5,6 +5,7 @@ import "@fontsource/inter/500.css";
 import "@fontsource/inter/600.css";
 import "@fontsource/inter/700.css";
 import "./globals.css";
+import Nav from "@/components/Nav";
 import SpiderSenseChat from "@/components/SpiderSenseChat";
 
 export const metadata: Metadata = {
@@ -18,6 +19,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased">
+        <Nav />
         {children}
         <SpiderSenseChat />
       </body>
