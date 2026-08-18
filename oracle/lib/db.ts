@@ -70,6 +70,17 @@ export async function query<T = Record<string, unknown>>(
   return result.rows as T[];
 }
 
+/**
+ * Spec-compatible generic query helper (Batch 7).
+ * Runs a parameterized query against the pool and returns the rows.
+ */
+export async function queryDatabase<T = Record<string, unknown>>(
+  text: string,
+  params?: unknown[],
+): Promise<T[]> {
+  return query<T>(text, params);
+}
+
 // ---- Domain queries ----
 
 export async function getYearlyStats(
