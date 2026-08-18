@@ -94,15 +94,23 @@ export async function searchBrightData(
   }
 
   const q = encodeURIComponent(query);
+  // Web search + Google Image search. `udm=2` is Google's current image tab
+  // (the old `tbm=isch` returns an empty body through the SERP parser).
   const [web, images] = await Promise.all([
     serpRequest(`https://www.google.com/search?q=${q}&hl=en&gl=us`),
-    serpRequest(`https://www.google.com/search?q=${q}&tbm=isch&hl=en&gl=us`),
+    serpRequest(`https://www.google.com/search?q=${q}&udm=2&hl=en&gl=us`),
   ]);
 
   return { web: parseWeb(web), images: parseImages(images) };
 }
 
-async function serpRequest(googleUrl: string): Promise<unknown> {
+/**
+ * The /request endpoint (format=json + data_format=parsed) wraps the parsed
+ * result in a `body` JSON string. Unwrap it here.
+ */
+async function serpRequest(
+  googleUrl: string,
+): Promise<Record<string, unknown>> {
   const res = await fetch(SERP_BASE, {
     method: "POST",
     headers: {
@@ -112,8 +120,8 @@ async function serpRequest(googleUrl: string): Promise<unknown> {
     body: JSON.stringify({
       zone: SERP_ZONE,
       url: googleUrl,
-      format: "raw",
-      data_format: "parsed_light",
+      format: "json",
+      data_format: "parsed",
     }),
   });
   if (!res.ok) {
@@ -121,33 +129,35 @@ async function serpRequest(googleUrl: string): Promise<unknown> {
       `Bright Data SERP ${res.status}: ${(await res.text()).slice(0, 200)}`,
     );
   }
-  return await res.json();
+  const raw = (await res.json()) as {
+    body?: string | Record<string, unknown>;
+  };
+  const body =
+    typeof raw.body === "string" ? JSON.parse(raw.body) : (raw.body ?? raw);
+  return (body ?? {}) as Record<string, unknown>;
 }
 
-function parseWeb(data: unknown): BrightWebResult[] {
-  const d = data as {
-    organic?: Array<{ title?: string; link?: string; description?: string }>;
-  };
-  return (d.organic ?? [])
+function parseWeb(body: Record<string, unknown>): BrightWebResult[] {
+  const organic = body.organic as
+    | Array<{ title?: string; link?: string; description?: string }>
+    | undefined;
+  return (organic ?? [])
     .map((r) => ({
       title: r.title ?? "",
       url: r.link ?? "",
       description: r.description ?? "",
     }))
-    .filter((r) => r.url);
+    .filter((r) => r.url.startsWith("http"));
 }
 
-function parseImages(data: unknown): BrightImageResult[] {
-  const d = data as {
-    images?: Array<Record<string, unknown>>;
-    organic?: Array<Record<string, unknown>>;
-  };
-  const rows = (d.images ?? d.organic ?? []) as Array<Record<string, unknown>>;
+function parseImages(body: Record<string, unknown>): BrightImageResult[] {
+  const rows = (body.images ?? []) as Array<Record<string, unknown>>;
   return rows
     .map((r) => {
-      const url = firstString(r.image, r.url, r.link, r.original, r.thumbnail);
-      const source_url = firstString(r.source_url, r.source, r.link, r.url);
-      const title = firstString(r.title, r.alt, r.snippet);
+      // NOTE: r.image / r.image_base64 are huge base64 blobs — never return them.
+      const url = firstString(r.original_image, r.image_url, r.thumbnail);
+      const source_url = firstString(r.link, r.source_url, r.source);
+      const title = firstString(r.image_alt, r.title, r.source);
       return { title, url, source_url };
     })
     .filter((r) => r.url.startsWith("http"));
