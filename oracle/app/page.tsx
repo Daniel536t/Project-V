@@ -44,15 +44,47 @@ export default function Home() {
             INTO THE SCRAPE-VERSE
           </motion.p>
 
-          <motion.h1
-            initial={{ opacity: 0, scale: 0.85 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ type: "spring", stiffness: 120, damping: 14 }}
-            data-text="ORACLE"
-            className="glitch chromatic--hard relative mt-2 font-display text-[clamp(4.5rem,18vw,11rem)] leading-none text-foreground"
-          >
-            ORACLE
-          </motion.h1>
+          <div className="relative mt-2">
+            {/* Spider-sense rings behind the title */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+            >
+              {[90, 130, 170].map((r) => (
+                <motion.span
+                  key={r}
+                  className="absolute rounded-full border border-dashed border-spider-yellow/30"
+                  style={{ width: r * 2, height: r * 2, left: -r, top: -r }}
+                  animate={{ scale: [1, 1.06, 1] }}
+                  transition={{ duration: 3 + r / 60, repeat: Infinity, ease: "easeInOut" }}
+                />
+              ))}
+            </div>
+
+            <motion.h1
+              initial={{ opacity: 0, scale: 0.85 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ type: "spring", stiffness: 120, damping: 14 }}
+              data-text="ORACLE"
+              className="glitch chromatic--hard relative font-display text-[clamp(4.5rem,18vw,11rem)] leading-none text-foreground"
+            >
+              ORACLE
+            </motion.h1>
+
+            {/* Graffiti tag */}
+            <motion.span
+              initial={{ opacity: 0, rotate: -24, scale: 0.6 }}
+              animate={{ opacity: 1, rotate: -8, scale: 1 }}
+              transition={{ delay: 0.5, type: "spring", stiffness: 200 }}
+              className="absolute -right-2 top-0 hidden font-display text-xl tracking-wider text-spider-pink md:block"
+              style={{
+                WebkitTextStroke: "2px #05050a",
+                textShadow: "3px 3px 0 #00d1ff",
+              }}
+            >
+              WHAT&apos;S UP DANGER?
+            </motion.span>
+          </div>
 
           <motion.span
             initial={{ scale: 0 }}

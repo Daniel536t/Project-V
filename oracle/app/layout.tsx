@@ -7,6 +7,7 @@ import "@fontsource/inter/700.css";
 import "./globals.css";
 import Nav from "@/components/Nav";
 import SpiderSenseChat from "@/components/SpiderSenseChat";
+import PortalIntro from "@/components/PortalIntro";
 
 export const metadata: Metadata = {
   title: "ORACLE - 25 Years of Web Intelligence",
@@ -22,6 +23,7 @@ export default function RootLayout({
         <Nav />
         {children}
         <SpiderSenseChat />
+        <PortalIntro />
       </body>
     </html>
   );

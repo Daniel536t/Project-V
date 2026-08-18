@@ -44,9 +44,10 @@ export default function PersonalPage() {
       <p className="font-display text-xl tracking-[0.3em] text-spider-blue">
         YOUR DIMENSION
       </p>
-      <h1 className="mt-2 font-display text-5xl tracking-wide text-foreground">
+      <h1 className="chromatic mt-2 font-display text-5xl tracking-wide text-foreground">
         Personal timeline
       </h1>
+      <span className="onomatopoeia onomatopoeia--pink mt-2 text-2xl">SPIN!</span>
       <p className="mt-3 text-foreground/60">
         Add milestones and let the Oracle spin them into your Spider-Verse
         origin story.

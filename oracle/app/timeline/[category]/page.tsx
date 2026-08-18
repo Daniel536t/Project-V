@@ -43,9 +43,10 @@ export default function TimelineCategoryPage() {
       <p className="font-display text-xl tracking-[0.3em] text-spider-red">
         WHEN DID IT CHANGE?
       </p>
-      <h1 className="mt-2 font-display text-5xl tracking-wide text-foreground">
+      <h1 className="chromatic mt-2 font-display text-5xl tracking-wide text-foreground">
         {category}
       </h1>
+      <span className="onomatopoeia--pink onomatopoeia mt-2 text-2xl">WHAM!</span>
       {source === "demo" && (
         <p className="mt-3 text-sm text-spider-yellow">
           ⚠ Showing demo data — set DATABASE_URL to query real scraped history.

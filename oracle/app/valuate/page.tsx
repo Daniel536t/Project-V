@@ -11,9 +11,10 @@ export default function ValuatePage() {
       <p className="font-display text-xl tracking-[0.3em] text-spider-purple">
         SCARCITY SCAN
       </p>
-      <h1 className="mt-2 font-display text-5xl tracking-wide text-foreground">
+      <h1 className="chromatic mt-2 font-display text-5xl tracking-wide text-foreground">
         Is it actually rare?
       </h1>
+      <span className="onomatopoeia--cyan onomatopoeia mt-2 text-2xl">SCAN!</span>
       <p className="mt-3 text-foreground/60">
         Upload a photo — ORACLE identifies the item, assesses condition, and
         estimates scarcity and value.

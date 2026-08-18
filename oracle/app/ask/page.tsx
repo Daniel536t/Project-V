@@ -70,7 +70,7 @@ function AskContent() {
     return (
       <main className="flex min-h-screen items-center justify-center p-8">
         <div className="text-center">
-          <p className="font-display text-2xl">Ask the Oracle</p>
+          <p className="chromatic font-display text-4xl">Ask the Oracle</p>
           <p className="mt-2 text-foreground/60">
             Use the 🕸️ SENSE bubble to ask a question, or search from the home
             page.
@@ -88,7 +88,7 @@ function AskContent() {
           animate={{ opacity: 1, y: 0 }}
           className="mb-8"
         >
-          <h1 className="mb-4 text-4xl">{query}</h1>
+          <h1 className="chromatic mb-4 text-4xl">{query}</h1>
           <div className="rift"></div>
         </motion.div>
 
@@ -107,7 +107,7 @@ function AskContent() {
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.4 }}
           >
-            <h2 className="mb-4 text-2xl">The Data Web</h2>
+            <h2 className="chromatic mb-4 text-2xl">🕸️ The Data Web</h2>
             <SpiderWeb data={data} width={800} height={800} />
           </motion.div>
         )}
