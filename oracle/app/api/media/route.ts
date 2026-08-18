@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { queryDatabase } from "@/lib/db";
+import {
+  searchBrightData,
+  type BrightImageResult,
+} from "@/lib/brightdata";
 
 export const runtime = "nodejs";
 
@@ -10,6 +14,12 @@ export interface MediaItem {
   article_url: string;
   source: string;
   category: string;
+}
+
+export interface ArticleItem {
+  title: string;
+  url: string;
+  description: string;
 }
 
 const STOPWORDS = new Set([
@@ -39,7 +49,7 @@ export async function GET(request: Request) {
     );
 
     if (rows.length > 0) {
-      const items = rows
+      const images = rows
         .map((r) => {
           const meta = (r.metadata ?? {}) as Record<string, unknown>;
           return {
@@ -53,30 +63,77 @@ export async function GET(request: Request) {
         })
         .filter((i) => i.image_url);
 
-      if (items.length > 0) {
-        return NextResponse.json({ query: q, items, source: "db" });
+      const articles = rows
+        .map((r) => ({
+          title: String(r.title ?? q),
+          url: String(r.source_url ?? ""),
+          description: "",
+        }))
+        .filter((a) => a.url);
+
+      if (images.length > 0 || articles.length > 0) {
+        return NextResponse.json({ query: q, images, articles, source: "db" });
       }
     }
   } catch {
-    // DB not wired up yet — continue to Commons.
+    // DB not wired up yet — continue.
   }
 
-  // 2) Query-relevant media from Wikimedia Commons (no key needed).
+  // 2) Bright Data SERP — search anything (images + articles).
+  try {
+    const serp = await searchBrightData(q);
+    if (serp.images.length > 0 || serp.web.length > 0) {
+      return NextResponse.json({
+        query: q,
+        images: toImageItems(serp.images, q),
+        articles: serp.web.slice(0, 8),
+        source: "brightdata",
+      });
+    }
+  } catch (err) {
+    console.warn(
+      "media: Bright Data SERP unavailable, falling back to Commons:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  // 3) Wikimedia Commons fallback (query-relevant, no key needed).
   try {
     const items = await commonsItems(q);
     if (items.length >= 3) {
-      return NextResponse.json({ query: q, items, source: "commons" });
+      return NextResponse.json({
+        query: q,
+        images: items,
+        articles: items.slice(0, 6).map((i) => ({
+          title: i.title,
+          url: i.article_url,
+          description: "",
+        })),
+        source: "commons",
+      });
     }
   } catch {
     // fall through to placeholder imagery.
   }
 
-  // 3) Last-resort placeholder imagery.
+  // 4) Last-resort placeholder imagery.
   return NextResponse.json({
     query: q,
-    items: placeholderItems(q),
+    images: placeholderItems(q),
+    articles: [],
     source: "demo",
   });
+}
+
+function toImageItems(imgs: BrightImageResult[], q: string): MediaItem[] {
+  return imgs.slice(0, 14).map((im, i, arr) => ({
+    era: 2000 + Math.round((i / Math.max(arr.length - 1, 1)) * 26),
+    title: im.title || `${q} · result ${i + 1}`,
+    image_url: im.url,
+    article_url: im.source_url || im.url,
+    source: "brightdata",
+    category: "general",
+  }));
 }
 
 async function commonsItems(q: string): Promise<MediaItem[]> {
@@ -97,7 +154,6 @@ async function commonsItems(q: string): Promise<MediaItem[]> {
     }).toString();
 
   const res = await fetchCommons(url);
-
   const data = (await res.json()) as {
     query?: {
       pages?: Record<

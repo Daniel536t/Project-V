@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { routeQuery } from "@/lib/llm-router";
 import { queryDatabase, recordUserQuery } from "@/lib/db";
+import { searchBrightData } from "@/lib/brightdata";
 
 export const runtime = "nodejs";
 
@@ -49,11 +50,28 @@ export async function POST(request: Request) {
     );
   }
 
+  // Ground the answer in live search results (Bright Data SERP).
+  let webResults: unknown[] = [];
+  try {
+    const serp = await searchBrightData(question);
+    webResults = serp.web.slice(0, 6).map((r) => ({
+      title: r.title,
+      url: r.url,
+      snippet: r.description,
+    }));
+  } catch (err) {
+    console.warn(
+      "Ask: live search unavailable, answering from model knowledge:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+
   let response;
   try {
     response = await routeQuery(question, undefined, {
       historicalData,
       stats,
+      webResults,
     });
   } catch (err) {
     console.error("Ask API error:", err);

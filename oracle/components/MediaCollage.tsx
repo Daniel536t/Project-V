@@ -12,11 +12,30 @@ interface MediaItem {
   category: string;
 }
 
+interface ArticleItem {
+  title: string;
+  url: string;
+  description: string;
+}
+
+interface MediaResponse {
+  images?: MediaItem[];
+  articles?: ArticleItem[];
+  source?: string;
+}
+
 const PLACEHOLDER =
   "data:image/svg+xml," +
   encodeURIComponent(
     `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="420"><rect width="100%" height="100%" fill="#12122a"/><text x="50%" y="50%" font-size="110" text-anchor="middle" dominant-baseline="central">🕸️</text></svg>`,
   );
+
+const SOURCE_LABEL: Record<string, string> = {
+  brightdata: "POWERED BY BRIGHT DATA",
+  db: "SCRAPED ARCHIVE",
+  commons: "WIKIMEDIA COMMONS",
+  demo: "DEMO DATA",
+};
 
 /** Grade an image by era: faded/sepia in the past, vivid in the present. */
 function eraFilter(era: number): string {
@@ -25,20 +44,28 @@ function eraFilter(era: number): string {
   return "saturate(1.15)";
 }
 
-/** A wall of era-tagged images — the "multiverse collage" of a query across time. */
+/** The "multiverse collage" of a query across time — images + related articles. */
 export default function MediaCollage({ query }: { query: string }) {
-  const [items, setItems] = useState<MediaItem[]>([]);
+  const [images, setImages] = useState<MediaItem[]>([]);
+  const [articles, setArticles] = useState<ArticleItem[]>([]);
+  const [source, setSource] = useState<string>("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     fetch(`/api/media?q=${encodeURIComponent(query)}`)
       .then((r) => r.json())
-      .then((d) => {
-        if (!cancelled) setItems(d.items ?? []);
+      .then((d: MediaResponse) => {
+        if (cancelled) return;
+        setImages(d.images ?? []);
+        setArticles(d.articles ?? []);
+        setSource(d.source ?? "");
       })
       .catch(() => {
-        if (!cancelled) setItems([]);
+        if (!cancelled) {
+          setImages([]);
+          setArticles([]);
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -52,16 +79,16 @@ export default function MediaCollage({ query }: { query: string }) {
     return (
       <div className="mt-12 flex items-center gap-3 text-foreground/60">
         <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-spider-pink border-t-transparent" />
-        Opening the multiverse…
+        Searching the multiverse…
       </div>
     );
   }
 
-  if (items.length === 0) return null;
+  if (images.length === 0 && articles.length === 0) return null;
 
   return (
     <section className="mt-14">
-      <div className="flex items-end justify-between gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className="chromatic font-display text-3xl">
             🌐 MULTIVERSE COLLAGE
@@ -71,73 +98,101 @@ export default function MediaCollage({ query }: { query: string }) {
             its era.
           </p>
         </div>
-        <span className="onomatopoeia--cyan onomatopoeia hidden text-2xl sm:block">
-          ZZZT!
+        <span className="inline-block rounded-full border-2 border-black bg-spider-blue px-3 py-1 font-display text-xs tracking-wider text-black shadow-[3px_3px_0_#05050a]">
+          {SOURCE_LABEL[source] ?? source}
         </span>
       </div>
 
       <div className="rift my-5" />
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-        {items.map((it, i) => {
-          const tilt = ((i % 5) - 2) * 2;
-          return (
-            <motion.a
-              key={`${it.era}-${i}`}
-              href={it.article_url}
-              target="_blank"
-              rel="noreferrer"
-              initial={{ opacity: 0, scale: 0.4, rotate: tilt * 4 }}
-              animate={{ opacity: 1, scale: 1, rotate: tilt }}
-              transition={{
-                delay: i * 0.05,
-                type: "spring",
-                stiffness: 200,
-                damping: 18,
-              }}
-              whileHover={{ scale: 1.06, rotate: 0, zIndex: 10 }}
-              className="group relative block overflow-hidden rounded-xl border-[3px] border-black bg-panel shadow-[5px_5px_0_#05050a]"
-            >
-              <motion.span
-                className="block"
-                animate={{ y: [0, -6, 0] }}
+      {images.length > 0 && (
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+          {images.map((it, i) => {
+            const tilt = ((i % 5) - 2) * 2;
+            return (
+              <motion.a
+                key={`${it.era}-${i}`}
+                href={it.article_url}
+                target="_blank"
+                rel="noreferrer"
+                initial={{ opacity: 0, scale: 0.4, rotate: tilt * 4 }}
+                animate={{ opacity: 1, scale: 1, rotate: tilt }}
                 transition={{
-                  duration: 4 + (i % 4),
-                  repeat: Infinity,
-                  ease: "easeInOut",
-                  delay: i * 0.2,
+                  delay: i * 0.05,
+                  type: "spring",
+                  stiffness: 200,
+                  damping: 18,
                 }}
+                whileHover={{ scale: 1.06, rotate: 0, zIndex: 10 }}
+                className="group relative block overflow-hidden rounded-xl border-[3px] border-black bg-panel shadow-[5px_5px_0_#05050a]"
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={it.image_url}
-                  alt={it.title}
-                  loading="lazy"
-                  onError={(e) => {
-                    e.currentTarget.onerror = null;
-                    e.currentTarget.src = PLACEHOLDER;
+                <motion.span
+                  className="block"
+                  animate={{ y: [0, -6, 0] }}
+                  transition={{
+                    duration: 4 + (i % 4),
+                    repeat: Infinity,
+                    ease: "easeInOut",
+                    delay: i * 0.2,
                   }}
-                  className="aspect-[4/3] w-full object-cover"
-                  style={{ filter: eraFilter(it.era) }}
-                />
-              </motion.span>
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={it.image_url}
+                    alt={it.title}
+                    loading="lazy"
+                    onError={(e) => {
+                      e.currentTarget.onerror = null;
+                      e.currentTarget.src = PLACEHOLDER;
+                    }}
+                    className="aspect-[4/3] w-full object-cover"
+                    style={{ filter: eraFilter(it.era) }}
+                  />
+                </motion.span>
 
-              {/* Era badge */}
-              <span className="absolute left-1.5 top-1.5 rounded-md border-2 border-black bg-spider-yellow px-2 py-0.5 font-display text-sm tracking-wider text-black shadow-[2px_2px_0_#05050a]">
-                {it.era}
-              </span>
+                <span className="absolute left-1.5 top-1.5 rounded-md border-2 border-black bg-spider-yellow px-2 py-0.5 font-display text-sm tracking-wider text-black shadow-[2px_2px_0_#05050a]">
+                  {it.era}
+                </span>
 
-              {/* Comic halftone over the photo */}
-              <span className="halftone pointer-events-none absolute inset-0 opacity-30 mix-blend-overlay" />
+                <span className="halftone pointer-events-none absolute inset-0 opacity-30 mix-blend-overlay" />
 
-              {/* Title slide-up */}
-              <span className="absolute inset-x-0 bottom-0 translate-y-full bg-black/85 px-3 py-2 text-xs font-semibold text-white transition-transform duration-200 group-hover:translate-y-0">
-                {it.title}
-              </span>
-            </motion.a>
-          );
-        })}
-      </div>
+                <span className="absolute inset-x-0 bottom-0 translate-y-full bg-black/85 px-3 py-2 text-xs font-semibold text-white transition-transform duration-200 group-hover:translate-y-0">
+                  {it.title}
+                </span>
+              </motion.a>
+            );
+          })}
+        </div>
+      )}
+
+      {articles.length > 0 && (
+        <div className="mt-10">
+          <h3 className="chromatic mb-4 text-2xl">📰 Related Articles</h3>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {articles.map((a, i) => (
+              <motion.a
+                key={`${a.url}-${i}`}
+                href={a.url}
+                target="_blank"
+                rel="noreferrer"
+                initial={{ opacity: 0, x: -16 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.3 + i * 0.05 }}
+                className="group block rounded-xl border-2 border-black bg-panel p-4 shadow-[4px_4px_0_#05050a] transition hover:border-spider-pink"
+              >
+                <span className="block font-display text-lg leading-tight text-foreground group-hover:text-spider-pink">
+                  {a.title}
+                </span>
+                {a.description && (
+                  <span className="mt-1 block text-sm text-foreground/60 line-clamp-2">
+                    {a.description}
+                  </span>
+                )}
+              </motion.a>
+            ))}
+          </div>
+        </div>
+      )}
     </section>
   );
 }
