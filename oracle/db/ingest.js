@@ -44,16 +44,26 @@ const pool = new Pool({
 
 (async () => {
   let inserted = 0;
+  let skipped = 0;
   for (const it of items) {
     const era = Number(it.year);
     if (!Number.isFinite(era)) continue;
+    const title = String(it.title);
+    const exists = await pool.query(
+      `SELECT 1 FROM scraped_data WHERE title = $1 AND era = $2 AND category = $3`,
+      [title, era, category],
+    );
+    if (exists.rowCount > 0) {
+      skipped++;
+      continue;
+    }
     await pool.query(
       `INSERT INTO scraped_data (era, category, title, metadata, source_url)
        VALUES ($1, $2, $3, $4, $5)`,
       [
         era,
         category,
-        String(it.title),
+        title,
         JSON.stringify({ kind: it.category ?? null, source: "brightdata" }),
         typeof it.url === "string" ? it.url : null,
       ],
@@ -71,7 +81,7 @@ const pool = new Pool({
     [category],
   );
 
-  console.log(`ingested ${inserted} rows into scraped_data (category=${category})`);
+  console.log(`ingested ${inserted} rows (skipped ${skipped} dups) into scraped_data (category=${category})`);
   await pool.end();
 })().catch((e) => {
   console.error("FATAL", e.message);
