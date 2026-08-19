@@ -32,6 +32,73 @@ export const QUESTION_TYPES: QuestionType[] = [
   },
 ];
 
+export type Channel = {
+  slug: string;
+  name: string;
+  tagline: string;
+  icon: string;
+  fx: string;
+  example: string;
+  accent: string;
+};
+
+export const CHANNELS: Channel[] = [
+  {
+    slug: "anime",
+    name: "Anime",
+    tagline: "Figures, shows & the mainstream explosion",
+    icon: "🕸️",
+    fx: "ZAP!",
+    example: "When did anime go mainstream?",
+    accent: "text-spider-red",
+  },
+  {
+    slug: "retro-games",
+    name: "Retro Games",
+    tagline: "Cartridges, consoles & price history",
+    icon: "👾",
+    fx: "POW!",
+    example: "Should I buy a PS5 now or wait?",
+    accent: "text-spider-blue",
+  },
+  {
+    slug: "vinyl",
+    name: "Vinyl",
+    tagline: "Records, pressings & the comeback",
+    icon: "💿",
+    fx: "WHAM!",
+    example: "When did vinyl outsell CDs?",
+    accent: "text-spider-purple",
+  },
+  {
+    slug: "cameras",
+    name: "Cameras",
+    tagline: "Used gear, glass & collector bodies",
+    icon: "📷",
+    fx: "KRAK!",
+    example: "Is this vintage camera worth it?",
+    accent: "text-spider-yellow",
+  },
+  {
+    slug: "web3",
+    name: "Web3",
+    tagline: "Tokens, NFTs & hype cycles",
+    icon: "⛓️",
+    fx: "ZZZT!",
+    example: "How did NFTs rise and fall?",
+    accent: "text-spider-pink",
+  },
+  {
+    slug: "anything",
+    name: "Free Search",
+    tagline: "Ask about any dimension at all",
+    icon: "🔍",
+    fx: "THWIP!",
+    example: "How did the Pyramids of Giza change?",
+    accent: "text-spider-blue",
+  },
+];
+
 export const MODELS = {
   primary: "thinkingmachines/inkling",
   vision: "meta/muse-glimmer-30b",

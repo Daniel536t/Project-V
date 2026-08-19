@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import SpiderVerseBackground from "@/components/SpiderVerseBackground";
-import { QUESTION_TYPES } from "@/lib/constants";
+import { CHANNELS, QUESTION_TYPES } from "@/lib/constants";
 
 const TRENDING = [
   { title: "When did vinyl outsell CDs?", category: "music", fx: "POW!" },
@@ -145,6 +145,76 @@ export default function Home() {
             </button>
           </div>
         </motion.section>
+
+        {/* Dimensions — the multiverse channels */}
+        <section id="dimensions" className="mt-24">
+          <motion.h2
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            viewport={{ once: true }}
+            className="mb-2 text-center text-4xl"
+          >
+            Pick a dimension
+          </motion.h2>
+          <p className="mb-10 text-center text-foreground/60">
+            Six scraped universes. Each one answers buy/wait, rarity, and
+            “when did it change” from its own data.
+          </p>
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {CHANNELS.map((ch, i) => {
+              const isFreeSearch = ch.slug === "anything";
+              return (
+                <motion.div
+                  key={ch.slug}
+                  initial={{ opacity: 0, y: 30 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.06 }}
+                >
+                  <div
+                    className={`comic-panel ${tilt[i % 3]} flex h-full flex-col`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <span className="text-4xl">{ch.icon}</span>
+                      <span className="onomatopoeia text-lg">{ch.fx}</span>
+                    </div>
+                    <h3
+                      className={`mt-3 text-2xl ${ch.accent}`}
+                      style={{ textShadow: "2px 2px 0 #05050a" }}
+                    >
+                      {ch.name}
+                    </h3>
+                    <p className="mt-1 flex-1 text-sm text-gray-600">
+                      {ch.tagline}
+                    </p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {!isFreeSearch && (
+                        <Link
+                          href={`/timeline/${ch.slug}`}
+                          className="comic-btn !px-3 !py-1.5 !text-base"
+                        >
+                          Timeline →
+                        </Link>
+                      )}
+                      <Link
+                        href={
+                          isFreeSearch
+                            ? "/ask"
+                            : `/ask?q=${encodeURIComponent(
+                                ch.example,
+                              )}&category=${ch.slug}`
+                        }
+                        className="comic-btn comic-btn--cyan !px-3 !py-1.5 !text-base"
+                      >
+                        {isFreeSearch ? "Ask Anything" : "Ask"}
+                      </Link>
+                    </div>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
+        </section>
 
         {/* Question types */}
         <section className="mt-24">

@@ -33,6 +33,18 @@ export async function GET(request: Request) {
       .filter((r) => r.price !== null)
       .map((r) => ({ year: r.era, price: Number(r.price) }));
 
+    // DB is live but has no scraped history for this category yet — show the
+    // clearly-labeled demo timeline until the collector fills it in.
+    if (points.length === 0) {
+      return NextResponse.json({
+        data: [],
+        points: DEMO_POINTS,
+        source: "demo",
+        category,
+        note: "No scraped history for this category yet — showing sample data.",
+      });
+    }
+
     return NextResponse.json({ data, points, source: "db", category });
   } catch (err) {
     // DB not wired up yet — return demo data so the timeline renders.
