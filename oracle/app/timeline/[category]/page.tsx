@@ -36,6 +36,7 @@ export default function TimelineCategoryPage() {
 
   const [points, setPoints] = useState<PricePoint[]>([]);
   const [source, setSource] = useState<"db" | "demo" | null>(null);
+  const [metric, setMetric] = useState<"price" | "count">("price");
   const [selectedYear, setSelectedYear] = useState(2026);
   const [playing, setPlaying] = useState(false);
 
@@ -45,6 +46,7 @@ export default function TimelineCategoryPage() {
       .then((data) => {
         setPoints(data.points ?? []);
         setSource(data.source ?? null);
+        setMetric(data.metric === "count" ? "count" : "price");
       })
       .catch(() => setPoints([]));
   }, [category]);
@@ -117,6 +119,11 @@ export default function TimelineCategoryPage() {
             ⚠ DEMO DATA — connect a database for real history
           </p>
         )}
+        {source === "db" && (
+          <p className="mt-3 inline-block rounded-full border-2 border-black bg-spider-blue px-3 py-1 font-display text-sm tracking-wider text-black shadow-[3px_3px_0_#05050a]">
+            🕸️ REAL SCRAPED DATA · VIA BRIGHT DATA
+          </p>
+        )}
 
         {/* Time machine */}
         <motion.div
@@ -176,7 +183,9 @@ export default function TimelineCategoryPage() {
 
           <div className="rounded-2xl border-2 border-black bg-panel/90 p-4 shadow-[6px_6px_0_#05050a]">
             <h3 className="mb-2 font-display text-xl tracking-wider text-spider-red">
-              📈 PRICE ACROSS ERAS
+              {metric === "count"
+                ? "📈 ACTIVITY ACROSS ERAS"
+                : "📈 PRICE ACROSS ERAS"}
             </h3>
             <PriceChart data={points} />
           </div>
@@ -199,9 +208,15 @@ export default function TimelineCategoryPage() {
                   <TimelineCard
                     year={p.year}
                     title={`${slugify(category)} ${p.year}`}
-                    description={`Avg price around this era. Source: ${
-                      source ?? "—"
-                    }.`}
+                    description={
+                      metric === "count"
+                        ? `${p.price} item${p.price === 1 ? "" : "s"} in this era. Source: ${
+                            source ?? "—"
+                          }.`
+                        : `Avg price around this era. Source: ${
+                            source ?? "—"
+                          }.`
+                    }
                     accent="text-spider-red"
                   />
                 </motion.div>

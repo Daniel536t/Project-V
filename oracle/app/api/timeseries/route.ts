@@ -33,6 +33,23 @@ export async function GET(request: Request) {
       .filter((r) => r.price !== null)
       .map((r) => ({ year: r.era, price: Number(r.price) }));
 
+    // No price data (e.g. an encyclopedia/catalog) — aggregate an "activity
+    // per year" trend from era counts instead, so real history still renders.
+    if (points.length === 0 && data.length > 0) {
+      const counts = new Map<number, number>();
+      data.forEach((r) => counts.set(r.era, (counts.get(r.era) ?? 0) + 1));
+      const countPoints = Array.from(counts.entries())
+        .sort((a, b) => a[0] - b[0])
+        .map(([year, count]) => ({ year, price: count }));
+      return NextResponse.json({
+        data,
+        points: countPoints,
+        source: "db",
+        category,
+        metric: "count",
+      });
+    }
+
     // DB is live but has no scraped history for this category yet — show the
     // clearly-labeled demo timeline until the collector fills it in.
     if (points.length === 0) {
