@@ -32,7 +32,7 @@ function AskContent() {
   const [answer, setAnswer] = useState("");
   const [data, setData] = useState<DataPoint[]>([]);
   const [sources, setSources] = useState<
-    { title: string; url: string; snippet: string }[]
+    { title: string; url: string; snippet: string; domain?: string }[]
   >([]);
   const [loading, setLoading] = useState(Boolean(query));
 
@@ -125,6 +125,11 @@ function AskContent() {
                   rel="noreferrer"
                   className="group block rounded-lg border-2 border-black bg-panel p-3 shadow-[3px_3px_0_#05050a] transition hover:border-spider-pink"
                 >
+                  {s.domain && (
+                    <span className="mb-0.5 mr-1.5 inline-block rounded border-2 border-black bg-spider-blue px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-black">
+                      {s.domain}
+                    </span>
+                  )}
                   <span className="block text-sm font-semibold text-foreground group-hover:text-spider-pink">
                     {s.title}
                   </span>

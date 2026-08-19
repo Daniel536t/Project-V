@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { queryDatabase } from "@/lib/db";
 import {
   searchBrightData,
+  domainOf,
   type BrightImageResult,
 } from "@/lib/brightdata";
 
@@ -10,17 +11,22 @@ export const runtime = "nodejs";
 export interface MediaItem {
   /** Real year when known; null = live result with no historical date. */
   era: number | null;
+  /** How the year was established: caption, wayback, db — null for live. */
+  datedBy?: "caption" | "wayback" | "db" | null;
   title: string;
   image_url: string;
   article_url: string;
   source: string;
   category: string;
+  /** Source hostname, e.g. "nippon.com". */
+  domain: string;
 }
 
 export interface ArticleItem {
   title: string;
   url: string;
   description: string;
+  domain: string;
 }
 
 const STOPWORDS = new Set([
@@ -53,23 +59,31 @@ export async function GET(request: Request) {
       const images = rows
         .map((r) => {
           const meta = (r.metadata ?? {}) as Record<string, unknown>;
+          const articleUrl = String(meta.article_url ?? r.source_url ?? "");
+          const era = Number(r.era) || null;
           return {
-            era: Number(r.era) || null,
+            era,
+            datedBy: era != null ? "db" : null,
             title: String(r.title ?? q),
             image_url: String(meta.image_url ?? ""),
-            article_url: String(meta.article_url ?? r.source_url ?? ""),
+            article_url: articleUrl,
             source: "db",
             category: String(r.category ?? "general"),
+            domain: domainOf(articleUrl),
           };
         })
         .filter((i) => i.image_url);
 
       const articles = rows
-        .map((r) => ({
-          title: String(r.title ?? q),
-          url: String(r.source_url ?? ""),
-          description: "",
-        }))
+        .map((r) => {
+          const url = String(r.source_url ?? "");
+          return {
+            title: String(r.title ?? q),
+            url,
+            description: "",
+            domain: domainOf(url),
+          };
+        })
         .filter((a) => a.url);
 
       if (images.length > 0 || articles.length > 0) {
@@ -82,12 +96,16 @@ export async function GET(request: Request) {
 
   // 2) Bright Data SERP — search anything (images + articles).
   try {
-    const serp = await searchBrightData(q);
+    const refresh = searchParams.get("refresh") === "1";
+    const serp = await searchBrightData(q, { refresh });
     if (serp.images.length > 0 || serp.web.length > 0) {
       return NextResponse.json({
         query: q,
-        images: toImageItems(serp.images, q),
-        articles: serp.web.slice(0, 8),
+        images: await applyWaybackDates(toImageItems(serp.images, q)),
+        articles: serp.web.slice(0, 8).map((a) => ({
+          ...a,
+          domain: domainOf(a.url),
+        })),
         source: "brightdata",
       });
     }
@@ -127,16 +145,21 @@ export async function GET(request: Request) {
 }
 
 function toImageItems(imgs: BrightImageResult[], q: string): MediaItem[] {
-  return imgs.slice(0, 14).map((im, i) => ({
-    // Live search results are "now" — only stamp a year when the source
-    // caption explicitly carries a date. Never fabricate one.
-    era: extractYear(im.source, im.title),
-    title: im.title || `${q} · result ${i + 1}`,
-    image_url: im.url,
-    article_url: im.source_url || im.url,
-    source: "brightdata",
-    category: "general",
-  }));
+  return imgs.slice(0, 14).map((im, i) => {
+    const era = extractYear(im.source, im.title);
+    return {
+      // Live search results are "now" — only stamp a year when the source
+      // caption explicitly carries a date. Never fabricate one.
+      era,
+      datedBy: era != null ? "caption" : null,
+      title: im.title || `${q} · result ${i + 1}`,
+      image_url: im.url,
+      article_url: im.source_url || im.url,
+      source: "brightdata",
+      category: "general",
+      domain: domainOf(im.source_url || im.url),
+    };
+  });
 }
 
 async function commonsItems(q: string): Promise<MediaItem[]> {
@@ -182,18 +205,101 @@ async function commonsItems(q: string): Promise<MediaItem[]> {
     }))
     .filter((x) => x.url);
 
-  return withImages.slice(0, 14).map((x) => ({
-    era: extractYear(x.title),
-    title: cleanTitle(x.title),
-    image_url: x.url,
-    article_url:
+  return withImages.slice(0, 14).map((x) => {
+    const era = extractYear(x.title);
+    const page =
       x.page ||
       `https://commons.wikimedia.org/wiki/${encodeURIComponent(
         x.title.replace(/ /g, "_"),
-      )}`,
-    source: "commons",
-    category: "general",
-  }));
+      )}`;
+    return {
+      era,
+      datedBy: era != null ? "caption" : null,
+      title: cleanTitle(x.title),
+      image_url: x.url,
+      article_url: page,
+      source: "commons",
+      category: "general",
+      domain: domainOf(page),
+    };
+  });
+}
+
+/**
+ * Wayback dating: when a live result carries no date, look up when the source
+ * page was FIRST captured by the Internet Archive and stamp that year — a real
+ * "this existed by this year" signal, never a guess. Best-effort: a slow or
+ * missing archive lookup leaves the item LIVE. First-capture dates are fixed
+ * facts about the past, so they're cached forever (per process).
+ */
+const waybackCache = new Map<string, number | null>();
+
+async function applyWaybackDates(items: MediaItem[]): Promise<MediaItem[]> {
+  const undated = items.filter(
+    (i) => i.era == null && i.article_url.startsWith("http"),
+  );
+  // Be polite to archive.org: the CDX API rate-limits hard, so serialize the
+  // lookups with spacing, cap the count, and treat failures as "stay LIVE".
+  for (const item of undated.slice(0, 4)) {
+    const year = await waybackFirstYear(item.article_url);
+    if (year) {
+      item.era = year;
+      item.datedBy = "wayback";
+    }
+    await new Promise((r) => setTimeout(r, 350));
+  }
+  return items;
+}
+
+async function waybackFirstYear(url: string): Promise<number | null> {
+  const hit = waybackCache.get(url);
+  if (hit !== undefined) return hit;
+  const result = await fetchWaybackFirstCapture(url);
+  waybackCache.set(url, result);
+  return result;
+}
+
+async function fetchWaybackFirstCapture(url: string): Promise<number | null> {
+  const cdx =
+    "https://web.archive.org/cdx/search/cdx?" +
+    new URLSearchParams({
+      url,
+      output: "json",
+      fl: "timestamp",
+      filter: "statuscode:200",
+      from: "1996",
+      to: "2026",
+      limit: "1",
+    }).toString();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    try {
+      const res = await fetch(cdx, {
+        signal: controller.signal,
+        headers: {
+          "User-Agent": "ORACLE/1.0 (Into-the-Scrape-Verse hackathon demo)",
+        },
+      });
+      if (res.status === 429 || res.status >= 500) {
+        await new Promise((r) => setTimeout(r, 1200 * (attempt + 1)));
+        continue;
+      }
+      if (!res.ok) return null;
+      const rows = (await res.json()) as unknown;
+      // JSON output is [ ["timestamp"], ["20010321120000"], ... ] — the first
+      // row is the header; limit=1 + from=1996 gives the EARLIEST capture.
+      if (!Array.isArray(rows) || rows.length < 2) return null;
+      const first = (rows as Array<Array<string>>)[1]?.[0];
+      const year = Number(first?.slice(0, 4));
+      return year >= 1990 && year <= 2026 ? year : null;
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return null;
 }
 
 async function fetchCommons(url: string): Promise<Response> {
@@ -255,12 +361,15 @@ function cleanTitle(t: string): string {
 
 function placeholderItems(q: string): MediaItem[] {
   // Last-resort demo imagery — clearly labeled, no fake years.
+  const article = `https://en.wikipedia.org/wiki/${encodeURIComponent(q)}`;
   return Array.from({ length: 8 }, (_, i) => ({
     era: null,
+    datedBy: null,
     title: `${q} — result ${i + 1}`,
     image_url: `https://picsum.photos/seed/oracle-${i}-${q.length}/600/420`,
-    article_url: `https://en.wikipedia.org/wiki/${encodeURIComponent(q)}`,
+    article_url: article,
     source: "demo",
     category: "general",
+    domain: domainOf(article),
   }));
 }

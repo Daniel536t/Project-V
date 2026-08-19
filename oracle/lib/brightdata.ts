@@ -98,6 +98,7 @@ export interface BrightSearchResult {
  */
 export async function searchBrightData(
   query: string,
+  opts?: { refresh?: boolean },
 ): Promise<BrightSearchResult> {
   if (!BRIGHT_DATA_API_KEY || !SERP_ZONE) {
     throw new Error(
@@ -106,8 +107,10 @@ export async function searchBrightData(
   }
 
   const key = query.trim().toLowerCase();
-  const hit = serpCache.get(key);
-  if (hit && hit.expires > Date.now()) return hit.result;
+  if (!opts?.refresh) {
+    const hit = serpCache.get(key);
+    if (hit && hit.expires > Date.now()) return hit.result;
+  }
 
   const q = encodeURIComponent(query);
   // Web search + Google Image search. `udm=2` is Google's current image tab
@@ -187,4 +190,13 @@ function firstString(...vals: unknown[]): string {
     if (typeof v === "string" && v.trim()) return v.trim();
   }
   return "";
+}
+
+/** Human-friendly hostname of a URL, e.g. "www.nippon.com" → "nippon.com". */
+export function domainOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
 }

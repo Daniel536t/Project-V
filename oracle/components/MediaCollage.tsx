@@ -5,17 +5,20 @@ import { motion } from "framer-motion";
 
 interface MediaItem {
   era: number | null;
+  datedBy?: "caption" | "wayback" | "db" | null;
   title: string;
   image_url: string;
   article_url: string;
   source: string;
   category: string;
+  domain: string;
 }
 
 interface ArticleItem {
   title: string;
   url: string;
   description: string;
+  domain: string;
 }
 
 interface MediaResponse {
@@ -52,10 +55,19 @@ export default function MediaCollage({ query }: { query: string }) {
   const [articles, setArticles] = useState<ArticleItem[]>([]);
   const [source, setSource] = useState<string>("");
   const [loading, setLoading] = useState(true);
+  const [refresh, setRefresh] = useState(false);
+
+  // A new query starts from the cache again.
+  useEffect(() => {
+    setRefresh(false);
+  }, [query]);
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/media?q=${encodeURIComponent(query)}`)
+    setLoading(true);
+    fetch(
+      `/api/media?q=${encodeURIComponent(query)}&refresh=${refresh ? "1" : "0"}`,
+    )
       .then((r) => r.json())
       .then((d: MediaResponse) => {
         if (cancelled) return;
@@ -75,7 +87,7 @@ export default function MediaCollage({ query }: { query: string }) {
     return () => {
       cancelled = true;
     };
-  }, [query]);
+  }, [query, refresh]);
 
   if (loading) {
     return (
@@ -99,13 +111,25 @@ export default function MediaCollage({ query }: { query: string }) {
             “{query}” —{" "}
             {source === "db" ? "across the scraped archive" : "live search results"}
             . Click a panel to open its source.
+            {images.some((i) => i.datedBy === "wayback") &&
+              " ≈ years are first-capture dates from the Wayback Machine."}
           </p>
         </div>
-        <span className="inline-block rounded-full border-2 border-black bg-spider-blue px-3 py-1 font-display text-xs tracking-wider text-black shadow-[3px_3px_0_#05050a]">
-          {SOURCE_LABEL[source] ?? source}
-          {images.length > 0 ? ` · ${images.length} IMAGES` : ""}
-          {articles.length > 0 ? ` · ${articles.length} ARTICLES` : ""}
-        </span>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => setRefresh((r) => !r)}
+            disabled={loading}
+            title="Re-search the multiverse (bypasses cache)"
+            className="inline-block rounded-full border-2 border-black bg-spider-yellow px-3 py-1 font-display text-xs tracking-wider text-black shadow-[3px_3px_0_#05050a] transition hover:brightness-110 disabled:opacity-60"
+          >
+            ⟳ REFRESH
+          </button>
+          <span className="inline-block rounded-full border-2 border-black bg-spider-blue px-3 py-1 font-display text-xs tracking-wider text-black shadow-[3px_3px_0_#05050a]">
+            {SOURCE_LABEL[source] ?? source}
+            {images.length > 0 ? ` · ${images.length} IMAGES` : ""}
+            {articles.length > 0 ? ` · ${articles.length} ARTICLES` : ""}
+          </span>
+        </div>
       </div>
 
       <div className="rift my-5" />
@@ -155,14 +179,27 @@ export default function MediaCollage({ query }: { query: string }) {
                   />
                 </motion.span>
 
-                <span className="absolute left-1.5 top-1.5 rounded-md border-2 border-black bg-spider-yellow px-2 py-0.5 font-display text-sm tracking-wider text-black shadow-[2px_2px_0_#05050a]">
-                  {it.era ?? "LIVE"}
+                <span
+                  className="absolute left-1.5 top-1.5 rounded-md border-2 border-black bg-spider-yellow px-2 py-0.5 font-display text-sm tracking-wider text-black shadow-[2px_2px_0_#05050a]"
+                  title={
+                    it.datedBy === "wayback"
+                      ? "First captured by the Wayback Machine in this year"
+                      : it.era != null
+                        ? "Year from the source"
+                        : "Live result — no historical date"
+                  }
+                >
+                  {it.era != null
+                    ? it.datedBy === "wayback"
+                      ? `≈${it.era}`
+                      : it.era
+                    : "LIVE"}
                 </span>
 
                 <span className="halftone pointer-events-none absolute inset-0 opacity-30 mix-blend-overlay" />
 
                 <span className="absolute inset-x-0 bottom-0 translate-y-full bg-black/85 px-3 py-2 text-xs font-semibold text-white transition-transform duration-200 group-hover:translate-y-0">
-                  {it.title}
+                  {it.domain ? `${it.domain} · ${it.title}` : it.title}
                 </span>
               </motion.a>
             );
@@ -188,6 +225,11 @@ export default function MediaCollage({ query }: { query: string }) {
                 <span className="block font-display text-lg leading-tight text-foreground group-hover:text-spider-pink">
                   {a.title}
                 </span>
+                {a.domain && (
+                  <span className="mt-1 inline-block rounded border-2 border-black bg-spider-blue px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-black">
+                    {a.domain}
+                  </span>
+                )}
                 {a.description && (
                   <span className="mt-1 block text-sm text-foreground/60 line-clamp-2">
                     {a.description}

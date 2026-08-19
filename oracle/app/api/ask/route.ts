@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { routeQuery } from "@/lib/llm-router";
 import { queryDatabase, recordUserQuery } from "@/lib/db";
-import { searchBrightData } from "@/lib/brightdata";
+import { searchBrightData, domainOf } from "@/lib/brightdata";
 
 export const runtime = "nodejs";
 
@@ -58,6 +58,7 @@ export async function POST(request: Request) {
       title: r.title,
       url: r.url,
       snippet: r.description,
+      domain: domainOf(r.url),
     }));
   } catch (err) {
     console.warn(
