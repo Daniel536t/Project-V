@@ -1,13 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
-
-interface Message {
-  role: "user" | "assistant" | "alert";
-  content: string;
-  id: number;
-}
+import { AnimatePresence, motion } from "framer-motion";
 
 interface Watch {
   id: string;
@@ -21,35 +15,99 @@ interface Watch {
   scar_count: number;
 }
 
-const PRESETS = [
-  { label: "PS5 under $800", text: "Watch the PS5 and tell me when it drops under $800" },
-  { label: "PS5 restock", text: "Let me know the moment the PS5 is back in stock" },
-  { label: "Vinyl drop", text: "Watch this vinyl and tell me when it's available" },
-  { label: "Apartment", text: "Tell me when a 2-bedroom in Brooklyn goes under $3000" },
+interface MediaItem {
+  era: number | null;
+  title: string;
+  image_url: string;
+  article_url: string;
+  source: string;
+  domain: string;
+}
+
+interface ArticleItem {
+  title: string;
+  url: string;
+  description: string;
+  domain: string;
+}
+
+interface Findings {
+  query: string;
+  images: MediaItem[];
+  articles: ArticleItem[];
+  source: string;
+}
+
+const SUGGESTIONS = [
+  "Watch the PS5 and tell me when it drops under $800",
+  "Let me know the moment this vinyl is back in stock",
+  "PS5 price history",
+  "Rarest retro video games",
 ];
 
-export default function AgentPage() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      role: "assistant",
-      content:
-        "I'm SENSE. Tell me what to watch and when to tingle — I'll remember it and tell you the moment it matters.",
-      id: 0,
-    },
-  ]);
+const SOURCE_LABEL: Record<string, string> = {
+  brightdata: "Bright Data",
+  db: "Scraped archive",
+  commons: "Wikimedia",
+  demo: "Demo",
+};
+
+function statusStyle(status: string): { dot: string; text: string; label: string } {
+  switch (status) {
+    case "alerted":
+      return { dot: "bg-rose-400", text: "text-rose-300", label: "Alerted" };
+    case "broken":
+      return { dot: "bg-amber-400", text: "text-amber-300", label: "Broken" };
+    case "healing":
+      return { dot: "bg-amber-400", text: "text-amber-300", label: "Healing" };
+    case "healed":
+      return { dot: "bg-violet-400", text: "text-violet-300", label: "Healed" };
+    default:
+      return { dot: "bg-emerald-400", text: "text-emerald-300", label: "Watching" };
+  }
+}
+
+const PLACEHOLDER =
+  "data:image/svg+xml," +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="450"><rect width="100%" height="100%" fill="#12121f"/></svg>`,
+  );
+
+export default function Home() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [reply, setReply] = useState<string | null>(null);
   const [watches, setWatches] = useState<Watch[]>([]);
-  const alertedIds = useRef<Set<string>>(new Set());
-  const idRef = useRef(1);
-  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const [findings, setFindings] = useState<Findings | null>(null);
+  const [finding, setFinding] = useState(false);
+  const [alert, setAlert] = useState<string | null>(null);
+  const seenAlerts = useRef<Set<string>>(new Set());
 
-  async function send(text?: string) {
+  async function loadFindings(q: string) {
+    setFinding(true);
+    try {
+      const r = await fetch(`/api/media?q=${encodeURIComponent(q)}`);
+      const d = await r.json();
+      setFindings({
+        query: q,
+        images: d.images ?? [],
+        articles: d.articles ?? [],
+        source: d.source ?? "",
+      });
+    } catch {
+      setFindings(null);
+    } finally {
+      setFinding(false);
+    }
+  }
+
+  async function submit(text?: string) {
     const content = (text ?? input).trim();
     if (!content || busy) return;
     setInput("");
     setBusy(true);
-    setMessages((m) => [...m, { role: "user", content, id: idRef.current++ }]);
+    setReply(null);
+    setFindings(null);
     try {
       const res = await fetch("/api/agent/chat", {
         method: "POST",
@@ -57,184 +115,324 @@ export default function AgentPage() {
         body: JSON.stringify({ message: content }),
       });
       const data = await res.json();
-      setMessages((m) => [
-        ...m,
-        { role: "assistant", content: data.message ?? "Done.", id: idRef.current++ },
-      ]);
+      setReply(data.message ?? "");
       if (Array.isArray(data.watches)) setWatches(data.watches);
+      await loadFindings(data.query ?? content);
     } catch {
-      setMessages((m) => [
-        ...m,
-        { role: "assistant", content: "I hit a snag — try again.", id: idRef.current++ },
-      ]);
+      setReply("I hit a snag — try again.");
     } finally {
       setBusy(false);
     }
   }
 
   useEffect(() => {
+    fetch("/api/watches")
+      .then((r) => r.json())
+      .then((d) => setWatches(d.watches ?? []))
+      .catch(() => {});
+  }, []);
+
+  // Poll for alerts — the tingle.
+  useEffect(() => {
     const t = setInterval(async () => {
       try {
-        const res = await fetch("/api/watches");
-        const data = await res.json();
-        if (Array.isArray(data.watches)) {
-          setWatches(data.watches);
-          for (const w of data.watches) {
-            if (w.status === "alerted" && !alertedIds.current.has(w.id)) {
-              alertedIds.current.add(w.id);
-              setMessages((m) => [
-                ...m,
-                {
-                  role: "alert",
-                  content: `${w.label ?? w.id} just fired — ${
-                    w.field === "price" ? `$${w.last_value}` : w.last_value
-                  } ${w.operator} ${w.target ?? ""}. It survived ${
-                    w.scar_count ?? 0
-                  } redesign${w.scar_count === 1 ? "" : "s"} to tell you.`,
-                  id: idRef.current++,
-                },
-              ]);
+        const r = await fetch("/api/watches");
+        const d = await r.json();
+        if (Array.isArray(d.watches)) {
+          setWatches(d.watches);
+          for (const w of d.watches) {
+            if (w.status === "alerted" && !seenAlerts.current.has(w.id)) {
+              seenAlerts.current.add(w.id);
+              setAlert(
+                `${w.label ?? w.id} just fired — ${
+                  w.field === "price" ? `$${w.last_value}` : w.last_value
+                } ${w.operator} ${w.target ?? ""}.`,
+              );
             }
           }
         }
       } catch {
         /* ignore */
       }
-    }, 4000);
+    }, 6000);
     return () => clearInterval(t);
   }, []);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, busy]);
-
   return (
-    <div className="flex h-screen flex-col bg-background font-sans text-foreground">
+    <div className="relative min-h-screen bg-[#07070b] font-sans text-white">
+      <div className="aurora" />
+
+      {/* Alert toast */}
+      <AnimatePresence>
+        {alert && (
+          <motion.div
+            initial={{ opacity: 0, y: -12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="fixed left-1/2 top-5 z-50 -translate-x-1/2 px-4"
+          >
+            <div className="sense-tingle flex items-center gap-3 rounded-xl border border-rose-400/40 bg-[#1a0f14]/90 px-4 py-3 text-sm text-rose-100 shadow-2xl backdrop-blur">
+              <span>🔔</span>
+              <span>{alert}</span>
+              <button
+                onClick={() => setAlert(null)}
+                className="ml-1 text-rose-300/70 hover:text-rose-100"
+              >
+                ✕
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Top bar */}
-      <header className="flex items-center justify-between border-b border-white/10 px-5 py-3">
-        <div className="flex items-baseline gap-3">
-          <span className="text-lg font-semibold tracking-tight">SENSE</span>
-          <span className="hidden text-xs text-foreground/50 sm:inline">
-            spider-sense for the live web
-          </span>
+      <header className="relative z-10 mx-auto flex max-w-5xl items-center justify-between px-5 py-5">
+        <div className="flex items-center gap-2.5">
+          <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-[#a78bfa] to-[#4cc9f0]" />
+          <span className="text-[15px] font-semibold tracking-tight">SENSE</span>
         </div>
-        <div className="flex items-center gap-3 text-xs">
-          <Link
-            href="/demo/admin"
-            className="rounded-md border border-white/15 px-3 py-1.5 text-foreground/70 hover:bg-white/5"
-          >
-            Demo controls
-          </Link>
-          <Link
-            href="/console"
-            className="rounded-md border border-white/15 px-3 py-1.5 text-foreground/70 hover:bg-white/5"
-          >
-            Console →
-          </Link>
-        </div>
+        <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[11px] font-medium text-white/50">
+          Powered by Bright Data
+        </span>
       </header>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-6">
-        <div className="mx-auto max-w-2xl space-y-4">
-          {messages.map((m) => (
-            <div
-              key={m.id}
-              className={m.role === "user" ? "flex justify-end" : "flex justify-start"}
-            >
-              {m.role === "alert" ? (
-                <div className="sense-tingle max-w-[85%] rounded-lg border border-spider-red/60 bg-spider-red/10 px-4 py-3 text-sm text-foreground">
-                  {m.content}
-                </div>
-              ) : (
-                <div
-                  className={`max-w-[85%] whitespace-pre-line rounded-lg px-4 py-3 text-sm leading-relaxed ${
-                    m.role === "user"
-                      ? "bg-spider-blue/90 text-black"
-                      : "bg-white/5 text-foreground/90"
-                  }`}
-                >
-                  {m.content}
-                </div>
-              )}
-            </div>
-          ))}
-          {busy && (
-            <div className="flex justify-start">
-              <div className="rounded-lg bg-white/5 px-4 py-3 text-sm text-foreground/50">
-                …
-              </div>
-            </div>
-          )}
-          <div ref={bottomRef} />
-        </div>
-      </div>
+      <main className="relative z-10 mx-auto max-w-3xl px-5 pb-28">
+        {/* Hero */}
+        <section className="pt-12 text-center sm:pt-20">
+          <motion.div
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            <p className="text-xs font-medium uppercase tracking-[0.25em] text-white/40">
+              Spider-sense for the live web
+            </p>
+            <h1 className="mt-4 text-5xl font-semibold leading-[1.05] tracking-tight sm:text-6xl">
+              Tell it what to <span className="gradient-text">watch.</span>
+            </h1>
+            <p className="mx-auto mt-4 max-w-md text-[15px] leading-relaxed text-white/50">
+              Track a price, a restock, a drop. SENSE remembers, survives
+              redesigns, and pings you the moment it matters.
+            </p>
+          </motion.div>
 
-      {/* Watches strip */}
-      {watches.length > 0 && (
-        <div className="border-t border-white/10 px-5 py-2">
-          <div className="mx-auto flex max-w-2xl flex-wrap gap-2 text-xs">
-            {watches.map((w) => (
-              <span
-                key={w.id}
-                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 ${
-                  w.status === "alerted"
-                    ? "border-spider-red bg-spider-red/15 text-spider-red"
-                    : w.status === "broken"
-                      ? "border-spider-yellow bg-spider-yellow/10 text-spider-yellow"
-                      : "border-white/15 text-foreground/70"
-                }`}
+          {/* Input */}
+          <motion.div
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.08 }}
+            className="mt-10"
+          >
+            <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-2 pl-5 shadow-[0_24px_60px_-24px_rgba(124,92,255,0.4)] backdrop-blur-xl transition focus-within:border-[#a78bfa]/50 focus-within:ring-1 focus-within:ring-[#a78bfa]/40">
+              <svg
+                className="h-5 w-5 shrink-0 text-white/40"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
               >
-                <span
-                  className={`h-1.5 w-1.5 rounded-full ${
-                    w.status === "alerted"
-                      ? "bg-spider-red"
-                      : w.status === "broken"
-                        ? "bg-spider-yellow"
-                        : "bg-emerald-400"
-                  }`}
-                />
-                {w.label ?? w.id} · {w.status}
-                {w.scar_count > 0 && ` · 🕸️${w.scar_count}`}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Input */}
-      <div className="border-t border-white/10 px-4 py-4">
-        <div className="mx-auto max-w-2xl">
-          <div className="mb-2 flex flex-wrap gap-2">
-            {PRESETS.map((p) => (
+                <circle cx="11" cy="11" r="7" />
+                <path d="m21 21-4.3-4.3" />
+              </svg>
+              <input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && submit()}
+                placeholder='Track a price, a restock, a drop — try "PS5 under $800"'
+                className="flex-1 bg-transparent py-2 text-[15px] text-white placeholder:text-white/35 focus:outline-none"
+              />
               <button
-                key={p.label}
-                onClick={() => send(p.text)}
-                disabled={busy}
-                className="rounded-full border border-white/15 px-3 py-1 text-xs text-foreground/70 hover:bg-white/5 disabled:opacity-50"
+                onClick={() => submit()}
+                disabled={busy || !input.trim()}
+                className="rounded-xl bg-gradient-to-r from-[#7c5cff] to-[#4cc9f0] px-5 py-2.5 text-sm font-semibold text-white transition hover:brightness-110 disabled:opacity-40"
               >
-                {p.label}
+                {busy ? "…" : "Go"}
               </button>
+            </div>
+
+            <div className="mt-4 flex flex-wrap justify-center gap-2">
+              {SUGGESTIONS.map((s) => (
+                <button
+                  key={s}
+                  onClick={() => submit(s)}
+                  disabled={busy}
+                  className="rounded-full border border-white/10 bg-white/[0.02] px-3.5 py-1.5 text-xs text-white/60 transition hover:border-white/20 hover:text-white disabled:opacity-40"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        </section>
+
+        {/* Reply */}
+        <AnimatePresence>
+          {reply && (
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mt-8"
+            >
+              <div className="whitespace-pre-line rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-4 text-[15px] leading-relaxed text-white/85">
+                {reply}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Findings */}
+        {finding && (
+          <div className="mt-12 grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div
+                key={i}
+                className="aspect-[4/3] animate-pulse rounded-2xl border border-white/10 bg-white/[0.04]"
+              />
             ))}
           </div>
-          <div className="flex gap-2">
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && send()}
-              placeholder='e.g. "Watch the PS5 and tell me when it drops under $800"'
-              className="flex-1 rounded-lg border border-white/15 bg-white/5 px-4 py-3 text-sm text-foreground placeholder:text-foreground/40 focus:border-spider-blue focus:outline-none"
-            />
-            <button
-              onClick={() => send()}
-              disabled={busy || !input.trim()}
-              className="rounded-lg bg-spider-blue px-4 py-3 text-sm font-semibold text-black hover:bg-[#5ce6ff] disabled:opacity-40"
-            >
-              Send
-            </button>
-          </div>
-        </div>
-      </div>
+        )}
+
+        {!finding && findings && findings.images.length > 0 && (
+          <section id="findings" className="mt-14">
+            <div className="mb-5 flex items-end justify-between">
+              <div>
+                <h2 className="text-lg font-semibold tracking-tight">Findings</h2>
+                <p className="mt-0.5 text-sm text-white/45">
+                  “{findings.query}” ·{" "}
+                  {SOURCE_LABEL[findings.source] ?? findings.source}
+                </p>
+              </div>
+              <span className="text-xs text-white/35">
+                {findings.images.length} images
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {findings.images.map((it, i) => (
+                <motion.a
+                  key={`${it.image_url}-${i}`}
+                  href={it.article_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.03, duration: 0.4 }}
+                  className="group relative block overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={it.image_url}
+                    alt={it.title}
+                    loading="lazy"
+                    onError={(e) => {
+                      e.currentTarget.onerror = null;
+                      e.currentTarget.src = PLACEHOLDER;
+                    }}
+                    className="aspect-[4/3] w-full object-cover transition duration-500 group-hover:scale-[1.05]"
+                  />
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+                  <span className="absolute left-2 top-2 rounded-md bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white/85 backdrop-blur">
+                    {it.domain || "source"}
+                  </span>
+                  <span className="absolute inset-x-3 bottom-2.5 translate-y-2 truncate text-xs font-medium text-white opacity-0 transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
+                    {it.title}
+                  </span>
+                </motion.a>
+              ))}
+            </div>
+
+            {findings.articles.length > 0 && (
+              <div className="mt-8 space-y-2">
+                {findings.articles.slice(0, 6).map((a, i) => (
+                  <motion.a
+                    key={`${a.url}-${i}`}
+                    href={a.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.2 + i * 0.03 }}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 transition hover:bg-white/[0.05]"
+                  >
+                    <span className="truncate text-sm text-white/85">{a.title}</span>
+                    <span className="shrink-0 text-xs text-white/40">{a.domain}</span>
+                  </motion.a>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* Watches */}
+        {watches.length > 0 && (
+          <section id="watches" className="mt-16">
+            <div className="mb-5 flex items-end justify-between">
+              <div>
+                <h2 className="text-lg font-semibold tracking-tight">
+                  Your watches
+                </h2>
+                <p className="mt-0.5 text-sm text-white/45">
+                  SENSE remembers what you care about.
+                </p>
+              </div>
+              <span className="text-xs text-white/35">
+                {watches.length} active
+              </span>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              {watches.map((w) => {
+                const s = statusStyle(w.status);
+                return (
+                  <div
+                    key={w.id}
+                    className={`rounded-2xl border border-white/10 bg-white/[0.03] p-5 transition hover:bg-white/[0.05] ${
+                      w.status === "alerted"
+                        ? "sense-tingle border-rose-400/50 bg-rose-500/[0.06]"
+                        : ""
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="truncate text-[15px] font-medium">
+                        {w.label ?? w.id}
+                      </span>
+                      <span className={`flex items-center gap-1.5 text-xs ${s.text}`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${s.dot}`} />
+                        {s.label}
+                      </span>
+                    </div>
+                    <p className="mt-1.5 text-xs text-white/40">
+                      {w.id} · {w.field} {w.operator} {w.target ?? ""}
+                    </p>
+                    <div className="mt-3 flex items-center gap-2 text-xs text-white/55">
+                      <span className="live-dot" />
+                      last{" "}
+                      {w.last_value
+                        ? w.field === "price"
+                          ? `$${w.last_value}`
+                          : w.last_value
+                        : "—"}
+                      {w.scar_count > 0 && (
+                        <span className="text-white/35">
+                          · survived {w.scar_count} redesign
+                          {w.scar_count === 1 ? "" : "s"}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* Footer */}
+        <footer className="mt-24 text-center text-xs text-white/25">
+          SENSE · a persistent sense of the live web
+        </footer>
+      </main>
     </div>
   );
 }

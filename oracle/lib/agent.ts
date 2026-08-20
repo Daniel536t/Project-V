@@ -19,7 +19,7 @@ type Action =
   | { type: "check"; label: string | null }
   | { type: "cancel"; label: string | null }
   | { type: "explain"; label: string | null }
-  | { type: "chat" };
+  | { type: "find"; query: string };
 
 function fieldFor(msg: string): "price" | "stock" {
   return /(stock|available|availability|restock|back in|out of)/i.test(msg)
@@ -66,6 +66,22 @@ function labelFor(msg: string, field: string, target: string | null): string {
   return product;
 }
 
+/** Clean subject for image search, e.g. "watch the PS5 under $800" → "PlayStation 5". */
+function subjectFor(msg: string): string {
+  if (/ps5|playstation/i.test(msg)) return "PlayStation 5";
+  if (/a7|sony|camera/i.test(msg)) return "Sony A7IV";
+  if (/vinyl|record|album/i.test(msg)) return "vinyl record";
+  if (/apartment|flat/i.test(msg)) return "apartment";
+  if (/visa|appointment/i.test(msg)) return "visa appointment";
+  return msg
+    .replace(
+      /watch|track|monitor|tell me|let me know|alert me|notify me|ping me|the moment|it drops|drops|in stock|back in|restock|available|under\s*\$?\d+(?:\.\d+)?|\$\d+(?:\.\d+)?|when|if/gi,
+      " ",
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function parseAction(msg: string): Action {
   const m = msg.trim();
 
@@ -98,7 +114,7 @@ function parseAction(msg: string): Action {
     };
   }
 
-  return { type: "chat" };
+  return { type: "find", query: m };
 }
 
 function findLabel(msg: string): string | null {
@@ -160,6 +176,7 @@ async function llmParseWatch(msg: string): Promise<Action | null> {
 export interface AgentReply {
   action: string;
   message: string;
+  query?: string;
   watches?: WatchRow[];
   watch?: WatchRow;
   alert?: WatchRow;
@@ -170,7 +187,7 @@ export async function handleAgentMessage(msg: string): Promise<AgentReply> {
   let action = parseAction(msg);
 
   if (
-    action.type === "chat" &&
+    action.type === "find" &&
     /(watch|track|monitor|tell me when|alert me|notify|under|in stock|restock|\$\d+)/i.test(msg)
   ) {
     const parsed = await llmParseWatch(msg);
@@ -188,7 +205,8 @@ export async function handleAgentMessage(msg: string): Promise<AgentReply> {
             : "whenever the price changes";
       return {
         action: "create",
-        message: `Done. Watch ${watch.id} is live. I'm tracking "${watch.label}" and I'll tell you ${when}. It's watching ${watch.url} through Bright Data.`,
+        message: `Done. Watch ${watch.id} is live. I'm tracking "${watch.label}" and I'll tell you ${when}.`,
+        query: subjectFor(msg),
         watch,
         watches: await getWatches(),
       };
@@ -268,14 +286,13 @@ export async function handleAgentMessage(msg: string): Promise<AgentReply> {
       };
     }
 
-    case "chat": {
-      const answer = await callLLM(MODELS.conversational, msg, {
-        system:
-          'You are SENSE, a watch-keeping agent. You set up watches on web pages (price, stock, drops, listings) and alert the user when their condition is met, surviving site redesigns via self-healing. Answer warmly and briefly (under 100 words). If the user seems to want you to watch something, ask them to say it plainly, e.g. "watch the PS5 under $800".',
-        maxTokens: 400,
-        temperature: 0.5,
-      });
-      return { action: "chat", message: answer, watches: await getWatches() };
+    case "find": {
+      return {
+        action: "find",
+        message: `Here's what I found on “${action.query}”.`,
+        query: action.query,
+        watches: await getWatches(),
+      };
     }
   }
 }

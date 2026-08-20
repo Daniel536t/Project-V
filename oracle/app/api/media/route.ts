@@ -233,25 +233,28 @@ async function commonsItems(q: string): Promise<MediaItem[]> {
  * facts about the past, so they're cached forever (per process).
  */
 const waybackCache = new Map<string, number | null>();
+// archive.org rate-limits hard; once it 429s this process, stop trying so the
+// media route stays fast (dating is best-effort, never worth a slow page).
+let waybackBlocked = false;
 
 async function applyWaybackDates(items: MediaItem[]): Promise<MediaItem[]> {
+  if (waybackBlocked) return items;
   const undated = items.filter(
     (i) => i.era == null && i.article_url.startsWith("http"),
   );
-  // Be polite to archive.org: the CDX API rate-limits hard, so serialize the
-  // lookups with spacing, cap the count, and treat failures as "stay LIVE".
-  for (const item of undated.slice(0, 4)) {
+  for (const item of undated.slice(0, 2)) {
     const year = await waybackFirstYear(item.article_url);
     if (year) {
       item.era = year;
       item.datedBy = "wayback";
     }
-    await new Promise((r) => setTimeout(r, 350));
+    await new Promise((r) => setTimeout(r, 200));
   }
   return items;
 }
 
 async function waybackFirstYear(url: string): Promise<number | null> {
+  if (waybackBlocked) return null;
   const hit = waybackCache.get(url);
   if (hit !== undefined) return hit;
   const result = await fetchWaybackFirstCapture(url);
@@ -271,9 +274,9 @@ async function fetchWaybackFirstCapture(url: string): Promise<number | null> {
       to: "2026",
       limit: "1",
     }).toString();
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < 1; attempt++) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5000);
+    const timer = setTimeout(() => controller.abort(), 3000);
     try {
       const res = await fetch(cdx, {
         signal: controller.signal,
@@ -281,9 +284,12 @@ async function fetchWaybackFirstCapture(url: string): Promise<number | null> {
           "User-Agent": "ORACLE/1.0 (Into-the-Scrape-Verse hackathon demo)",
         },
       });
-      if (res.status === 429 || res.status >= 500) {
-        await new Promise((r) => setTimeout(r, 1200 * (attempt + 1)));
-        continue;
+      if (res.status === 429) {
+        waybackBlocked = true;
+        return null;
+      }
+      if (res.status >= 500) {
+        return null;
       }
       if (!res.ok) return null;
       const rows = (await res.json()) as unknown;

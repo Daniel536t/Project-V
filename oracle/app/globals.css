@@ -523,3 +523,71 @@ h3 {
     transform: translateX(0);
   }
 }
+
+/* ------------------------------------------------------------------ *
+ * SENSE premium theme (consumer app)
+ * ------------------------------------------------------------------ */
+
+.aurora {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.aurora::before,
+.aurora::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+}
+.aurora::before {
+  width: 560px;
+  height: 560px;
+  left: 8%;
+  top: -140px;
+  background: radial-gradient(circle, rgba(124, 92, 255, 0.32), transparent 70%);
+}
+.aurora::after {
+  width: 480px;
+  height: 480px;
+  right: -60px;
+  top: 22%;
+  background: radial-gradient(circle, rgba(76, 201, 240, 0.2), transparent 70%);
+}
+
+.gradient-text {
+  background: linear-gradient(90deg, #a78bfa, #4cc9f0);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.live-dot {
+  position: relative;
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #34d399;
+}
+.live-dot::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1px solid #34d399;
+  animation: live-ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes live-ping {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+}
