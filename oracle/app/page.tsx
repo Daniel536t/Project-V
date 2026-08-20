@@ -1,340 +1,240 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
-import SpiderVerseBackground from "@/components/SpiderVerseBackground";
-import { CHANNELS, QUESTION_TYPES } from "@/lib/constants";
 
-const TRENDING = [
-  { title: "When did vinyl outsell CDs?", category: "music", fx: "POW!" },
-  { title: "Is this LEGO set actually rare?", category: "toys", fx: "WOW!" },
-  { title: "The exact month anime went mainstream", category: "anime", fx: "ZAP!" },
+interface Message {
+  role: "user" | "assistant" | "alert";
+  content: string;
+  id: number;
+}
+
+interface Watch {
+  id: string;
+  label: string | null;
+  status: string;
+  last_value: string | null;
+  field: string;
+  operator: string;
+  target: string | null;
+  url: string;
+  scar_count: number;
+}
+
+const PRESETS = [
+  { label: "PS5 under $800", text: "Watch the PS5 and tell me when it drops under $800" },
+  { label: "PS5 restock", text: "Let me know the moment the PS5 is back in stock" },
+  { label: "Vinyl drop", text: "Watch this vinyl and tell me when it's available" },
+  { label: "Apartment", text: "Tell me when a 2-bedroom in Brooklyn goes under $3000" },
 ];
 
-const tilt = ["comic-panel--tilt", "", "comic-panel--tilt-r"];
+export default function AgentPage() {
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      role: "assistant",
+      content:
+        "I'm SENSE. Tell me what to watch and when to tingle — I'll remember it and tell you the moment it matters.",
+      id: 0,
+    },
+  ]);
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [watches, setWatches] = useState<Watch[]>([]);
+  const alertedIds = useRef<Set<string>>(new Set());
+  const idRef = useRef(1);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
 
-export default function Home() {
-  const [query, setQuery] = useState("");
-  const [birthYear, setBirthYear] = useState("");
-  const router = useRouter();
+  async function send(text?: string) {
+    const content = (text ?? input).trim();
+    if (!content || busy) return;
+    setInput("");
+    setBusy(true);
+    setMessages((m) => [...m, { role: "user", content, id: idRef.current++ }]);
+    try {
+      const res = await fetch("/api/agent/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: content }),
+      });
+      const data = await res.json();
+      setMessages((m) => [
+        ...m,
+        { role: "assistant", content: data.message ?? "Done.", id: idRef.current++ },
+      ]);
+      if (Array.isArray(data.watches)) setWatches(data.watches);
+    } catch {
+      setMessages((m) => [
+        ...m,
+        { role: "assistant", content: "I hit a snag — try again.", id: idRef.current++ },
+      ]);
+    } finally {
+      setBusy(false);
+    }
+  }
 
-  const handleSearch = () => {
-    if (query) router.push(`/ask?q=${encodeURIComponent(query)}`);
-  };
-  const handlePersonalTimeline = () => {
-    if (birthYear) router.push(`/personal?year=${encodeURIComponent(birthYear)}`);
-  };
+  useEffect(() => {
+    const t = setInterval(async () => {
+      try {
+        const res = await fetch("/api/watches");
+        const data = await res.json();
+        if (Array.isArray(data.watches)) {
+          setWatches(data.watches);
+          for (const w of data.watches) {
+            if (w.status === "alerted" && !alertedIds.current.has(w.id)) {
+              alertedIds.current.add(w.id);
+              setMessages((m) => [
+                ...m,
+                {
+                  role: "alert",
+                  content: `${w.label ?? w.id} just fired — ${
+                    w.field === "price" ? `$${w.last_value}` : w.last_value
+                  } ${w.operator} ${w.target ?? ""}. It survived ${
+                    w.scar_count ?? 0
+                  } redesign${w.scar_count === 1 ? "" : "s"} to tell you.`,
+                  id: idRef.current++,
+                },
+              ]);
+            }
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    }, 4000);
+    return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, busy]);
 
   return (
-    <main className="relative min-h-screen overflow-hidden">
-      <SpiderVerseBackground />
-      <div className="comic-bg" />
-      <div className="speedlines absolute inset-0 z-0" />
-
-      <div className="relative z-10 mx-auto max-w-6xl px-4 pb-24 pt-10">
-        {/* Hero */}
-        <section className="flex flex-col items-center text-center">
-          <motion.p
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="font-display text-lg tracking-[0.35em] text-spider-blue"
+    <div className="flex h-screen flex-col bg-background font-sans text-foreground">
+      {/* Top bar */}
+      <header className="flex items-center justify-between border-b border-white/10 px-5 py-3">
+        <div className="flex items-baseline gap-3">
+          <span className="text-lg font-semibold tracking-tight">SENSE</span>
+          <span className="hidden text-xs text-foreground/50 sm:inline">
+            spider-sense for the live web
+          </span>
+        </div>
+        <div className="flex items-center gap-3 text-xs">
+          <Link
+            href="/demo/admin"
+            className="rounded-md border border-white/15 px-3 py-1.5 text-foreground/70 hover:bg-white/5"
           >
-            INTO THE SCRAPE-VERSE
-          </motion.p>
+            Demo controls
+          </Link>
+          <Link
+            href="/console"
+            className="rounded-md border border-white/15 px-3 py-1.5 text-foreground/70 hover:bg-white/5"
+          >
+            Console →
+          </Link>
+        </div>
+      </header>
 
-          <div className="relative mt-2">
-            {/* Spider-sense rings behind the title */}
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto px-4 py-6">
+        <div className="mx-auto max-w-2xl space-y-4">
+          {messages.map((m) => (
             <div
-              aria-hidden
-              className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+              key={m.id}
+              className={m.role === "user" ? "flex justify-end" : "flex justify-start"}
             >
-              {[90, 130, 170].map((r) => (
-                <motion.span
-                  key={r}
-                  className="absolute rounded-full border border-dashed border-spider-yellow/30"
-                  style={{ width: r * 2, height: r * 2, left: -r, top: -r }}
-                  animate={{ scale: [1, 1.06, 1] }}
-                  transition={{ duration: 3 + r / 60, repeat: Infinity, ease: "easeInOut" }}
-                />
-              ))}
-            </div>
-
-            <motion.h1
-              initial={{ opacity: 0, scale: 0.85 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ type: "spring", stiffness: 120, damping: 14 }}
-              data-text="ORACLE"
-              className="glitch chromatic--hard relative font-display text-[clamp(4.5rem,18vw,11rem)] leading-none text-foreground"
-            >
-              ORACLE
-            </motion.h1>
-
-            {/* Graffiti tag */}
-            <motion.span
-              initial={{ opacity: 0, rotate: -24, scale: 0.6 }}
-              animate={{ opacity: 1, rotate: -8, scale: 1 }}
-              transition={{ delay: 0.5, type: "spring", stiffness: 200 }}
-              className="absolute -right-2 top-0 hidden font-display text-xl tracking-wider text-spider-pink md:block"
-              style={{
-                WebkitTextStroke: "2px #05050a",
-                textShadow: "3px 3px 0 #00d1ff",
-              }}
-            >
-              WHAT&apos;S UP DANGER?
-            </motion.span>
-          </div>
-
-          <motion.span
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ delay: 0.35, type: "spring", stiffness: 220 }}
-            className="onomatopoeia -mt-3 text-5xl"
-          >
-            THWIP!
-          </motion.span>
-
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.2 }}
-            className="mt-3 max-w-2xl text-lg text-foreground/70"
-          >
-            25 years of scraped web data. Zero gaps. Infinite answers.
-          </motion.p>
-
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.3 }}
-            className="rift mt-6 w-full max-w-md"
-          />
-        </section>
-
-        {/* Search */}
-        <motion.section
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15 }}
-          className="mx-auto mt-14 max-w-2xl"
-        >
-          <div className="comic-panel comic-panel--tilt scanlines">
-            <h2 className="mb-4 text-3xl">What do you want to know?</h2>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                placeholder="When did anime explode? Should I buy this camera?"
-                className="flex-1 rounded-lg border-2 border-black bg-gray-100 px-4 py-3 text-black focus:border-spider-red focus:outline-none"
-              />
-              <button className="comic-btn" onClick={handleSearch}>
-                Ask →
-              </button>
-            </div>
-            <div className="my-3 text-center text-sm font-bold text-gray-500">
-              — or —
-            </div>
-            <button
-              className="comic-btn comic-btn--cyan w-full justify-center"
-              onClick={() => router.push("/valuate")}
-            >
-              📸 Upload a Photo
-            </button>
-          </div>
-        </motion.section>
-
-        {/* Dimensions — the multiverse channels */}
-        <section id="dimensions" className="mt-24">
-          <motion.h2
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            viewport={{ once: true }}
-            className="mb-2 text-center text-4xl"
-          >
-            Pick a dimension
-          </motion.h2>
-          <p className="mb-10 text-center text-foreground/60">
-            Six scraped universes. Each one answers buy/wait, rarity, and
-            “when did it change” from its own data.
-          </p>
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {CHANNELS.map((ch, i) => {
-              const isFreeSearch = ch.slug === "anything";
-              return (
-                <motion.div
-                  key={ch.slug}
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: i * 0.06 }}
-                >
-                  <div
-                    className={`comic-panel ${tilt[i % 3]} flex h-full flex-col`}
-                  >
-                    <div className="flex items-start justify-between">
-                      <span className="text-4xl">{ch.icon}</span>
-                      <span className="onomatopoeia text-lg">{ch.fx}</span>
-                    </div>
-                    <h3
-                      className={`mt-3 text-2xl ${ch.accent}`}
-                      style={{ textShadow: "2px 2px 0 #05050a" }}
-                    >
-                      {ch.name}
-                    </h3>
-                    <p className="mt-1 flex-1 text-sm text-gray-600">
-                      {ch.tagline}
-                    </p>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {!isFreeSearch && (
-                        <Link
-                          href={`/timeline/${ch.slug}`}
-                          className="comic-btn !px-3 !py-1.5 !text-base"
-                        >
-                          Timeline →
-                        </Link>
-                      )}
-                      <Link
-                        href={
-                          isFreeSearch
-                            ? "/ask"
-                            : `/ask?q=${encodeURIComponent(
-                                ch.example,
-                              )}&category=${ch.slug}`
-                        }
-                        className="comic-btn comic-btn--cyan !px-3 !py-1.5 !text-base"
-                      >
-                        {isFreeSearch ? "Ask Anything" : "Ask"}
-                      </Link>
-                    </div>
-                  </div>
-                </motion.div>
-              );
-            })}
-          </div>
-        </section>
-
-        {/* Question types */}
-        <section className="mt-24">
-          <motion.h2
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            viewport={{ once: true }}
-            className="mb-10 text-center text-4xl"
-          >
-            Three ways to see the past
-          </motion.h2>
-          <div className="grid gap-8 md:grid-cols-3">
-            {QUESTION_TYPES.map((q, i) => (
-              <motion.div
-                key={q.title}
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.12 }}
-              >
-                <div className={`comic-panel ${tilt[i]} h-full`}>
-                  <div className="text-5xl">{q.icon}</div>
-                  <h3 className="mt-3 text-2xl">{q.title}</h3>
-                  <p className="mt-2 text-sm text-gray-600">{q.description}</p>
-                  <p className="mt-4 border-t-2 border-dashed border-gray-300 pt-3 text-sm italic text-gray-500">
-                    “{q.example}”
-                  </p>
+              {m.role === "alert" ? (
+                <div className="sense-tingle max-w-[85%] rounded-lg border border-spider-red/60 bg-spider-red/10 px-4 py-3 text-sm text-foreground">
+                  {m.content}
                 </div>
-              </motion.div>
+              ) : (
+                <div
+                  className={`max-w-[85%] whitespace-pre-line rounded-lg px-4 py-3 text-sm leading-relaxed ${
+                    m.role === "user"
+                      ? "bg-spider-blue/90 text-black"
+                      : "bg-white/5 text-foreground/90"
+                  }`}
+                >
+                  {m.content}
+                </div>
+              )}
+            </div>
+          ))}
+          {busy && (
+            <div className="flex justify-start">
+              <div className="rounded-lg bg-white/5 px-4 py-3 text-sm text-foreground/50">
+                …
+              </div>
+            </div>
+          )}
+          <div ref={bottomRef} />
+        </div>
+      </div>
+
+      {/* Watches strip */}
+      {watches.length > 0 && (
+        <div className="border-t border-white/10 px-5 py-2">
+          <div className="mx-auto flex max-w-2xl flex-wrap gap-2 text-xs">
+            {watches.map((w) => (
+              <span
+                key={w.id}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 ${
+                  w.status === "alerted"
+                    ? "border-spider-red bg-spider-red/15 text-spider-red"
+                    : w.status === "broken"
+                      ? "border-spider-yellow bg-spider-yellow/10 text-spider-yellow"
+                      : "border-white/15 text-foreground/70"
+                }`}
+              >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    w.status === "alerted"
+                      ? "bg-spider-red"
+                      : w.status === "broken"
+                        ? "bg-spider-yellow"
+                        : "bg-emerald-400"
+                  }`}
+                />
+                {w.label ?? w.id} · {w.status}
+                {w.scar_count > 0 && ` · 🕸️${w.scar_count}`}
+              </span>
             ))}
           </div>
-        </section>
+        </div>
+      )}
 
-        {/* Trending + demo CTA + personal */}
-        <section className="mt-24 grid gap-8 lg:grid-cols-2">
-          <div>
-            <h2 className="mb-6 text-3xl">🔥 Trending This Week</h2>
-            <div className="space-y-5">
-              {TRENDING.map((s, i) => (
-                <motion.div
-                  key={s.category}
-                  initial={{ opacity: 0, x: -30 }}
-                  whileInView={{ opacity: 1, x: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: i * 0.1 }}
-                >
-                  <Link
-                    href={`/timeline/${s.category}`}
-                    className="comic-panel comic-panel--cyan flex items-center justify-between gap-4"
-                  >
-                    <div>
-                      <h3 className="text-xl leading-tight">{s.title}</h3>
-                      <p className="mt-1 text-sm font-semibold text-gray-500">
-                        Explore the {s.category} timeline →
-                      </p>
-                    </div>
-                    <span className="onomatopoeia--pink onomatopoeia text-2xl">
-                      {s.fx}
-                    </span>
-                  </Link>
-                </motion.div>
-              ))}
-            </div>
+      {/* Input */}
+      <div className="border-t border-white/10 px-4 py-4">
+        <div className="mx-auto max-w-2xl">
+          <div className="mb-2 flex flex-wrap gap-2">
+            {PRESETS.map((p) => (
+              <button
+                key={p.label}
+                onClick={() => send(p.text)}
+                disabled={busy}
+                className="rounded-full border border-white/15 px-3 py-1 text-xs text-foreground/70 hover:bg-white/5 disabled:opacity-50"
+              >
+                {p.label}
+              </button>
+            ))}
           </div>
-
-          <div className="space-y-6">
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
+          <div className="flex gap-2">
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && send()}
+              placeholder='e.g. "Watch the PS5 and tell me when it drops under $800"'
+              className="flex-1 rounded-lg border border-white/15 bg-white/5 px-4 py-3 text-sm text-foreground placeholder:text-foreground/40 focus:border-spider-blue focus:outline-none"
+            />
+            <button
+              onClick={() => send()}
+              disabled={busy || !input.trim()}
+              className="rounded-lg bg-spider-blue px-4 py-3 text-sm font-semibold text-black hover:bg-[#5ce6ff] disabled:opacity-40"
             >
-              <Link href="/demo/healing" className="comic-panel comic-panel--purple block">
-                <span className="onomatopoeia--cyan onomatopoeia text-2xl">
-                  ZZZT!
-                </span>
-                <h2 className="mt-2 text-3xl leading-tight">
-                  🕸️ Watch it heal itself
-                </h2>
-                <p className="mt-2 text-sm text-gray-600">
-                  A scraper breaks in 2010. One sentence later, the AI fixes it
-                  — same collector, zero downtime.
-                </p>
-                <span className="comic-btn mt-4 inline-flex">
-                  Run the Self-Healing Demo →
-                </span>
-              </Link>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: 0.1 }}
-            >
-              <div className="comic-panel comic-panel--tilt-r">
-                <h2 className="text-3xl">🕸️ Your Personal Timeline</h2>
-                <p className="mt-1 text-sm text-gray-600">
-                  See what changed in your lifetime.
-                </p>
-                <div className="mt-3 flex gap-2">
-                  <input
-                    type="number"
-                    value={birthYear}
-                    onChange={(e) => setBirthYear(e.target.value)}
-                    placeholder="Birth year"
-                    className="flex-1 rounded-lg border-2 border-black bg-gray-100 px-4 py-2 text-black focus:border-spider-red focus:outline-none"
-                  />
-                  <button className="comic-btn" onClick={handlePersonalTimeline}>
-                    Generate
-                  </button>
-                </div>
-              </div>
-            </motion.div>
+              Send
+            </button>
           </div>
-        </section>
-
-        <footer className="mt-24 text-center text-sm text-foreground/40">
-          ORACLE · WeMakeDevs “Into the Scrape-Verse” hackathon
-        </footer>
+        </div>
       </div>
-    </main>
+    </div>
   );
 }

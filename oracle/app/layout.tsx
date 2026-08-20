@@ -5,13 +5,11 @@ import "@fontsource/inter/500.css";
 import "@fontsource/inter/600.css";
 import "@fontsource/inter/700.css";
 import "./globals.css";
-import Nav from "@/components/Nav";
-import SpiderSenseChat from "@/components/SpiderSenseChat";
-import PortalIntro from "@/components/PortalIntro";
 
 export const metadata: Metadata = {
-  title: "ORACLE - 25 Years of Web Intelligence",
-  description: "Time-travel through 25 years of data. Ask anything.",
+  title: "SENSE — spider-sense for the live web",
+  description:
+    "Tell an agent what to watch. It remembers, survives redesigns, and tells you when it matters.",
 };
 
 export default function RootLayout({
@@ -19,12 +17,7 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body className="antialiased">
-        <Nav />
-        {children}
-        <SpiderSenseChat />
-        <PortalIntro />
-      </body>
+      <body className="antialiased">{children}</body>
     </html>
   );
 }

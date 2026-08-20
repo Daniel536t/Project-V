@@ -47,6 +47,23 @@ CREATE TABLE IF NOT EXISTS user_queries (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
+-- Watches (SENSE: an agent keeps an eye on a URL and alerts on change)
+CREATE TABLE IF NOT EXISTS watches (
+  id TEXT PRIMARY KEY,
+  label TEXT,
+  url TEXT NOT NULL,
+  intent TEXT,
+  field TEXT NOT NULL DEFAULT 'price',
+  operator TEXT NOT NULL DEFAULT '<',
+  target TEXT,
+  status TEXT NOT NULL DEFAULT 'watching',
+  last_value TEXT,
+  selector TEXT,
+  scar_count INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
 -- Helpful indexes for the most common lookups
 CREATE INDEX IF NOT EXISTS idx_scraped_data_category_era ON scraped_data (category, era);
 CREATE INDEX IF NOT EXISTS idx_scraped_data_era ON scraped_data (era);

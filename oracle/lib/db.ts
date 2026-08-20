@@ -158,3 +158,99 @@ export async function getHealLedger(): Promise<HealLedgerRow[]> {
     `SELECT * FROM heal_ledger ORDER BY id DESC LIMIT 100`,
   );
 }
+
+// ---- Watches (SENSE) ----
+
+export interface WatchRow {
+  id: string;
+  label: string | null;
+  url: string;
+  intent: string | null;
+  field: string;
+  operator: string;
+  target: string | null;
+  status: string;
+  last_value: string | null;
+  selector: string | null;
+  scar_count: number;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export async function getWatches(): Promise<WatchRow[]> {
+  return query<WatchRow>(`SELECT * FROM watches ORDER BY created_at DESC`);
+}
+
+export async function getWatch(id: string): Promise<WatchRow | null> {
+  const rows = await query<WatchRow>(`SELECT * FROM watches WHERE id = $1`, [id]);
+  return rows[0] ?? null;
+}
+
+export async function createWatch(
+  w: Pick<WatchRow, "id" | "url" | "field" | "operator"> &
+    Partial<Pick<WatchRow, "label" | "intent" | "target" | "selector">>,
+): Promise<WatchRow> {
+  const rows = await query<WatchRow>(
+    `INSERT INTO watches (id, label, url, intent, field, operator, target, selector)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     RETURNING *`,
+    [
+      w.id,
+      w.label ?? null,
+      w.url,
+      w.intent ?? null,
+      w.field,
+      w.operator,
+      w.target ?? null,
+      w.selector ?? null,
+    ],
+  );
+  return rows[0];
+}
+
+const WATCH_EDITABLE = new Set([
+  "label",
+  "url",
+  "intent",
+  "field",
+  "operator",
+  "target",
+  "status",
+  "last_value",
+  "selector",
+  "scar_count",
+]);
+
+export async function updateWatch(
+  id: string,
+  patch: Partial<
+    Pick<
+      WatchRow,
+      | "label"
+      | "url"
+      | "intent"
+      | "field"
+      | "operator"
+      | "target"
+      | "status"
+      | "last_value"
+      | "selector"
+      | "scar_count"
+    >
+  >,
+): Promise<WatchRow | null> {
+  const entries = Object.entries(patch).filter(([k]) => WATCH_EDITABLE.has(k));
+  if (entries.length === 0) return getWatch(id);
+  const sets = entries.map(([k], i) => `${k} = $${i + 2}`).join(", ");
+  const values = entries.map(([, v]) => v);
+  const rows = await query<WatchRow>(
+    `UPDATE watches SET ${sets}, updated_at = NOW() WHERE id = $1 RETURNING *`,
+    [id, ...values],
+  );
+  return rows[0] ?? null;
+}
+
+export async function deleteWatch(id: string): Promise<boolean> {
+  const res = await getPool().query(`DELETE FROM watches WHERE id = $1`, [id]);
+  return (res.rowCount ?? 0) > 0;
+}
