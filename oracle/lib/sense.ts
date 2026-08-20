@@ -13,6 +13,7 @@ import {
   updateWatch,
   type WatchRow,
 } from "./db";
+import { searchBrightData, type BrightWebResult } from "./brightdata";
 
 export type DemoTemplate = 0 | 1 | 2;
 
@@ -239,6 +240,7 @@ export async function createWatchFromIntent(input: {
   field: string;
   operator: string;
   target: string | null;
+  query?: string | null;
 }): Promise<WatchRow> {
   const selector = selectorFor(demo.template, input.field);
   return createWatch({
@@ -250,5 +252,60 @@ export async function createWatchFromIntent(input: {
     operator: input.operator,
     target: input.target,
     selector,
+    query: input.query ?? null,
+    status: "waiting",
+    next_check_at: new Date(), // due immediately — first check runs right away
   });
+}
+
+// ---- Real check loop (Bright Data SERP) ----
+
+export const CHECK_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
+
+/** First dollar amount found across live search snippets. Honest but heuristic. */
+function extractPrice(web: BrightWebResult[]): string | null {
+  const text = web.map((w) => `${w.title} ${w.description}`).join(" ");
+  const m = text.match(/\$\s*(\d{1,6}(?:\.\d{1,2})?)/);
+  return m ? m[1] : null;
+}
+
+function extractStock(web: BrightWebResult[]): string | null {
+  const text = web
+    .map((w) => `${w.title} ${w.description}`)
+    .join(" ")
+    .toLowerCase();
+  if (/(out of stock|sold out|unavailable)/.test(text)) return "out-of-stock";
+  if (/(in stock|available|add to cart|buy now)/.test(text)) return "in-stock";
+  return null;
+}
+
+export interface CheckResult {
+  watch: WatchRow;
+  alerted: boolean;
+  value: string | null;
+}
+
+export async function checkWatch(watchId: string): Promise<CheckResult> {
+  const watch = await getWatch(watchId);
+  if (!watch) throw new Error(`Watch ${watchId} not found`);
+  await updateWatch(watchId, { status: "checking", last_checked_at: new Date() });
+  const subject = watch.query || watch.label || watch.url;
+  try {
+    const query = watch.field === "stock" ? `${subject} in stock` : `${subject} price`;
+    const serp = await searchBrightData(query);
+    const value =
+      watch.field === "stock" ? extractStock(serp.web) : extractPrice(serp.web);
+    const alerted =
+      value != null &&
+      evaluateCondition(value, watch.field, watch.operator, watch.target);
+    await updateWatch(watchId, {
+      status: alerted ? "alerted" : "waiting",
+      last_value: value,
+      next_check_at: new Date(Date.now() + CHECK_INTERVAL_MS),
+    });
+    return { watch: (await getWatch(watchId))!, alerted, value };
+  } catch (err) {
+    await updateWatch(watchId, { status: "error", last_value: null });
+    throw err;
+  }
 }

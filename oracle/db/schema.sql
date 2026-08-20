@@ -60,6 +60,9 @@ CREATE TABLE IF NOT EXISTS watches (
   last_value TEXT,
   selector TEXT,
   scar_count INTEGER NOT NULL DEFAULT 0,
+  query TEXT,
+  last_checked_at TIMESTAMP,
+  next_check_at TIMESTAMP,
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );

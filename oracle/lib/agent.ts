@@ -1,6 +1,6 @@
 import { MODELS } from "./constants";
 import { callLLM } from "./llm-router";
-import { createWatchFromIntent, runScrapePass } from "./sense";
+import { checkWatch, createWatchFromIntent } from "./sense";
 import { deleteWatch, getWatches, type WatchRow } from "./db";
 
 const DEMO_URL = "/demo/target";
@@ -196,7 +196,7 @@ export async function handleAgentMessage(msg: string): Promise<AgentReply> {
 
   switch (action.type) {
     case "create": {
-      const watch = await createWatchFromIntent(action);
+      const watch = await createWatchFromIntent({ ...action, query: subjectFor(msg) });
       const when =
         action.field === "stock"
           ? "the moment it comes back in stock"
@@ -205,7 +205,7 @@ export async function handleAgentMessage(msg: string): Promise<AgentReply> {
             : "whenever the price changes";
       return {
         action: "create",
-        message: `Done. Watch ${watch.id} is live. I'm tracking "${watch.label}" and I'll tell you ${when}.`,
+        message: `Done. Watch ${watch.id} is live — I'll check "${watch.label}" every 15 minutes and tell you ${when}. First check runs now.`,
         query: subjectFor(msg),
         watch,
         watches: await getWatches(),
@@ -239,20 +239,17 @@ export async function handleAgentMessage(msg: string): Promise<AgentReply> {
           watches,
         };
       }
-      const run = await runScrapePass(target.id);
+      const run = await checkWatch(target.id);
       const tail = run.alerted
         ? ` 🎯 Condition met: ${run.value}. Alert raised.`
-        : run.healed
-          ? ` It had broken and just healed itself — same watch, scar #${run.watch.scar_count}.`
-          : run.value == null
-            ? ` Still broken — bot wall is up.`
-            : ` Still at $${run.value}.`;
+        : run.value == null
+          ? ` I couldn't read a value yet — I'll keep checking.`
+          : ` Currently ${target.field === "price" ? `$${run.value}` : run.value}. Still watching.`;
       return {
         action: "check",
         message: `Checked ${run.watch.label ?? run.watch.id}.${tail}`,
         watch: run.watch,
         watches: await getWatches(),
-        events: run.events,
         alert: run.alerted ? run.watch : undefined,
       };
     }

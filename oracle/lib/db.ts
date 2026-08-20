@@ -173,6 +173,9 @@ export interface WatchRow {
   last_value: string | null;
   selector: string | null;
   scar_count: number;
+  query: string | null;
+  last_checked_at: Date | null;
+  next_check_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -188,11 +191,22 @@ export async function getWatch(id: string): Promise<WatchRow | null> {
 
 export async function createWatch(
   w: Pick<WatchRow, "id" | "url" | "field" | "operator"> &
-    Partial<Pick<WatchRow, "label" | "intent" | "target" | "selector">>,
+    Partial<
+      Pick<
+        WatchRow,
+        | "label"
+        | "intent"
+        | "target"
+        | "selector"
+        | "query"
+        | "status"
+        | "next_check_at"
+      >
+    >,
 ): Promise<WatchRow> {
   const rows = await query<WatchRow>(
-    `INSERT INTO watches (id, label, url, intent, field, operator, target, selector)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `INSERT INTO watches (id, label, url, intent, field, operator, target, selector, query, status, next_check_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      RETURNING *`,
     [
       w.id,
@@ -203,6 +217,9 @@ export async function createWatch(
       w.operator,
       w.target ?? null,
       w.selector ?? null,
+      w.query ?? null,
+      w.status ?? "waiting",
+      w.next_check_at ?? null,
     ],
   );
   return rows[0];
@@ -219,6 +236,9 @@ const WATCH_EDITABLE = new Set([
   "last_value",
   "selector",
   "scar_count",
+  "query",
+  "last_checked_at",
+  "next_check_at",
 ]);
 
 export async function updateWatch(
@@ -236,6 +256,9 @@ export async function updateWatch(
       | "last_value"
       | "selector"
       | "scar_count"
+      | "query"
+      | "last_checked_at"
+      | "next_check_at"
     >
   >,
 ): Promise<WatchRow | null> {

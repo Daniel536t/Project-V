@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { getWatches } from "@/lib/db";
 import { createWatchFromIntent } from "@/lib/sense";
+import { ensureScheduler } from "@/lib/scheduler";
 
 export const runtime = "nodejs";
 
 export async function GET() {
+  ensureScheduler();
   try {
     const watches = await getWatches();
     return NextResponse.json({ watches });
