@@ -176,6 +176,8 @@ export interface WatchRow {
   query: string | null;
   last_checked_at: Date | null;
   next_check_at: Date | null;
+  collector_id: string | null;
+  product_name: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -201,12 +203,14 @@ export async function createWatch(
         | "query"
         | "status"
         | "next_check_at"
+        | "collector_id"
+        | "product_name"
       >
     >,
 ): Promise<WatchRow> {
   const rows = await query<WatchRow>(
-    `INSERT INTO watches (id, label, url, intent, field, operator, target, selector, query, status, next_check_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    `INSERT INTO watches (id, label, url, intent, field, operator, target, selector, query, status, next_check_at, collector_id, product_name)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
      RETURNING *`,
     [
       w.id,
@@ -220,6 +224,8 @@ export async function createWatch(
       w.query ?? null,
       w.status ?? "waiting",
       w.next_check_at ?? null,
+      w.collector_id ?? null,
+      w.product_name ?? null,
     ],
   );
   return rows[0];
@@ -239,6 +245,8 @@ const WATCH_EDITABLE = new Set([
   "query",
   "last_checked_at",
   "next_check_at",
+  "collector_id",
+  "product_name",
 ]);
 
 export async function updateWatch(
@@ -259,6 +267,8 @@ export async function updateWatch(
       | "query"
       | "last_checked_at"
       | "next_check_at"
+      | "collector_id"
+      | "product_name"
     >
   >,
 ): Promise<WatchRow | null> {
@@ -276,4 +286,113 @@ export async function updateWatch(
 export async function deleteWatch(id: string): Promise<boolean> {
   const res = await getPool().query(`DELETE FROM watches WHERE id = $1`, [id]);
   return (res.rowCount ?? 0) > 0;
+}
+
+// ---- Scrape history (SENSE) ----
+
+export interface ScrapeHistoryRow {
+  id: number;
+  watch_id: string | null;
+  price: string | null;
+  in_stock: boolean | null;
+  raw: Record<string, unknown> | null;
+  scraped_at: Date;
+}
+
+export async function logScrape(
+  watchId: string,
+  price: number | null,
+  inStock: boolean | null,
+  raw: unknown,
+): Promise<ScrapeHistoryRow[]> {
+  return query<ScrapeHistoryRow>(
+    `INSERT INTO scrape_history (watch_id, price, in_stock, raw)
+     VALUES ($1, $2, $3, $4)
+     RETURNING *`,
+    [watchId, price, inStock, JSON.stringify(raw ?? {})],
+  );
+}
+
+export async function getScrapeHistory(
+  watchId: string,
+  limit = 100,
+): Promise<ScrapeHistoryRow[]> {
+  return query<ScrapeHistoryRow>(
+    `SELECT * FROM scrape_history WHERE watch_id = $1 ORDER BY id DESC LIMIT $2`,
+    [watchId, limit],
+  );
+}
+
+// ---- Structured heal events (SENSE: the Scar Log) ----
+
+export interface StructuredHeal {
+  watch_id: string | null;
+  collector_id: string | null;
+  broke_at: Date;
+  healed_at: Date;
+  original_intent: string | null;
+  old_selector: string | null;
+  new_selector: string | null;
+  confidence: number | null;
+  recovery_seconds: number | null;
+  description: string | null;
+  error_message: string | null;
+}
+
+export async function logStructuredHeal(h: StructuredHeal): Promise<HealLedgerRow[]> {
+  return query<HealLedgerRow>(
+    `INSERT INTO heal_ledger
+       (watch_id, collector_id, broke_at, healed_at, original_intent,
+        old_selector, new_selector, confidence, recovery_seconds,
+        description, error_message)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+     RETURNING *`,
+    [
+      h.watch_id,
+      h.collector_id,
+      h.broke_at,
+      h.healed_at,
+      h.original_intent,
+      h.old_selector,
+      h.new_selector,
+      h.confidence,
+      h.recovery_seconds,
+      h.description,
+      h.error_message,
+    ],
+  );
+}
+
+export interface ScarLogRow {
+  id: number;
+  watch_id: string | null;
+  collector_id: string | null;
+  broke_at: Date | null;
+  healed_at: Date | null;
+  original_intent: string | null;
+  old_selector: string | null;
+  new_selector: string | null;
+  confidence: number | null;
+  recovery_seconds: number | null;
+  description: string | null;
+  error_message: string | null;
+}
+
+export async function getScarLog(): Promise<ScarLogRow[]> {
+  return query<ScarLogRow>(
+    `SELECT id, watch_id, collector_id, broke_at, healed_at, original_intent,
+            old_selector, new_selector, confidence, recovery_seconds,
+            description, error_message
+     FROM heal_ledger
+     WHERE watch_id IS NOT NULL
+     ORDER BY id DESC
+     LIMIT 100`,
+  );
+}
+
+export async function getTotalScarCount(): Promise<number> {
+  const rows = await query<{ n: string }>(
+    `SELECT COUNT(*) AS n FROM heal_ledger WHERE watch_id IS NOT NULL`,
+  );
+  return Number(rows[0]?.n ?? 0);
 }

@@ -1,295 +1,220 @@
-import { MODELS } from "./constants";
+// SENSE agent — the only place an LLM is used is intent extraction (structured
+// JSON output). Everything else is templated responses driven by real API state.
+// We use NVIDIA NIM (lib/llm-router.ts) for the LLM — not OpenRouter.
+
 import { callLLM } from "./llm-router";
-import { checkWatch, createWatchFromIntent } from "./sense";
+import { MODELS } from "./constants";
+import { createWatchFromIntent, runScrapePass, type RunResult } from "./sense";
 import { deleteWatch, getWatches, type WatchRow } from "./db";
 
-const DEMO_URL = "/demo/target";
+const STORE_URL = "/api/store/html";
 
-type Action =
-  | {
-      type: "create";
-      label: string;
-      url: string;
-      intent: string;
-      field: string;
-      operator: string;
-      target: string | null;
-    }
-  | { type: "list" }
-  | { type: "check"; label: string | null }
-  | { type: "cancel"; label: string | null }
-  | { type: "explain"; label: string | null }
-  | { type: "find"; query: string };
+export interface ParsedIntent {
+  product_name: string;
+  target_price: number | null;
+  condition: string; // "<", "<=", ">", ">=", "==", "in_stock", "out_of_stock"
+  field: "price" | "stock";
+}
 
-function fieldFor(msg: string): "price" | "stock" {
-  return /(stock|available|availability|restock|back in|out of)/i.test(msg)
+// ---- deterministic parser (fast path + fallback) ----
+
+export function parseIntentDeterministic(msg: string): ParsedIntent | null {
+  const m = msg.trim();
+  const wantsWatch = /(watch|track|monitor|tell me when|alert me|notify|ping me|let me know)/i.test(m);
+  const hasTarget = /(under|below|less than|drops?\s+to|hits?|when.*(stock|available))/i.test(m);
+
+  if (!wantsWatch && !hasTarget) return null;
+
+  const field: "price" | "stock" = /(stock|available|availability|restock|back in)/i.test(m)
     ? "stock"
     : "price";
-}
 
-function numericTarget(msg: string): string | null {
-  // Prefer an explicit comparator: "under $800", "below 800", "drops to 799".
-  const after = msg.match(
-    /(?:under|below|over|above|less than|more than|drops?\s+to|hits?|at)\s*\$?\s*(\d+(?:\.\d+)?)/i,
-  );
-  if (after) return after[1];
-  // Otherwise a dollar amount anywhere (avoids matching "PS5" / "A7IV").
-  const dollar = msg.match(/\$\s*(\d+(?:\.\d+)?)/);
-  if (dollar) return dollar[1];
-  return null;
-}
-
-function operatorFor(msg: string, field: string): string {
   if (field === "stock") {
-    return /(out of|sold out|gone)/i.test(msg) ? "out_of_stock" : "in_stock";
+    const condition = /(out of|sold out|gone|unavailable)/i.test(m) ? "out_of_stock" : "in_stock";
+    return { product_name: "Sony A7IV", target_price: null, condition, field };
   }
-  if (/(under|below|less than|cheaper|drops? (to|below)|hit)/i.test(msg)) return "<";
-  if (/(over|above|more than|at least)/i.test(msg)) return ">";
-  if (/(exactly|==)/i.test(msg)) return "==";
-  return "<";
+
+  // price: "drops below $800" → target 800, condition "<"
+  const explicit = m.match(
+    /(?:under|below|less than|over|above|more than|drops?\s+to|hits?|at|==)\s*\$?\s*(\d+(?:\.\d+)?)/i,
+  );
+  let target: number | null = null;
+  let condition = "<";
+  if (explicit) {
+    target = Number(explicit[1]);
+    if (/(over|above|more than)/i.test(explicit[0])) condition = ">";
+    else if (/==|exactly/i.test(explicit[0])) condition = "==";
+    else condition = "<";
+  } else {
+    const dollar = m.match(/\$\s*(\d+(?:\.\d+)?)/);
+    target = dollar ? Number(dollar[1]) : null;
+  }
+
+  if (target == null) return null;
+  return { product_name: "Sony A7IV", target_price: target, condition, field };
 }
 
-function labelFor(msg: string, field: string, target: string | null): string {
-  const product = /ps5|playstation/i.test(msg)
-    ? "PS5"
-    : /a7|sony|camera/i.test(msg)
-      ? "Sony A7IV"
-      : /vinyl|album|record/i.test(msg)
-        ? "vinyl drop"
-        : /apartment|flat/i.test(msg)
-          ? "apartment"
-          : /visa|appointment/i.test(msg)
-            ? "visa slot"
-            : "watch";
-  if (field === "stock") return `${product} in stock`;
-  if (target) return `${product} under $${target}`;
-  return product;
-}
+// ---- NIM structured-JSON parser ----
 
-/** Clean subject for image search, e.g. "watch the PS5 under $800" → "PlayStation 5". */
-function subjectFor(msg: string): string {
-  if (/ps5|playstation/i.test(msg)) return "PlayStation 5";
-  if (/a7|sony|camera/i.test(msg)) return "Sony A7IV";
-  if (/vinyl|record|album/i.test(msg)) return "vinyl record";
-  if (/apartment|flat/i.test(msg)) return "apartment";
-  if (/visa|appointment/i.test(msg)) return "visa appointment";
-  return msg
-    .replace(
-      /watch|track|monitor|tell me|let me know|alert me|notify me|ping me|the moment|it drops|drops|in stock|back in|restock|available|under\s*\$?\d+(?:\.\d+)?|\$\d+(?:\.\d+)?|when|if/gi,
-      " ",
-    )
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function parseAction(msg: string): Action {
-  const m = msg.trim();
-
-  if (/(cancel|delete|remove|stop|pause)/i.test(m)) {
-    return { type: "cancel", label: findLabel(m) };
-  }
-  if (/(what|list|show).*(watching|watches|tracking|monitors)/i.test(m) || /^list$/i.test(m)) {
-    return { type: "list" };
-  }
-  if (/(how did you find|how do you know|explain|which selector|where.*(price|data))/i.test(m)) {
-    return { type: "explain", label: findLabel(m) };
-  }
-  if (/(check|scrape|update me|how.*(going|looking)|any (news|update)|status)/i.test(m)) {
-    return { type: "check", label: findLabel(m) };
-  }
-
-  const wantsWatch = /(watch|track|monitor|let me know|tell me when|alert me|notify|ping me)/i.test(m);
-  if (wantsWatch || /\$\d+|under|below|in stock|restock|available/i.test(m)) {
-    const field = fieldFor(m);
-    const target = field === "price" ? numericTarget(m) : null;
-    const operator = operatorFor(m, field);
-    return {
-      type: "create",
-      label: labelFor(m, field, target),
-      url: DEMO_URL,
-      intent: m,
-      field,
-      operator,
-      target,
-    };
-  }
-
-  return { type: "find", query: m };
-}
-
-function findLabel(msg: string): string | null {
-  for (const kw of ["ps5", "playstation", "a7", "camera", "vinyl", "album", "record", "apartment", "visa"]) {
-    if (new RegExp(kw, "i").test(msg)) return kw;
-  }
-  return null;
-}
-
-function matchWatch(watches: WatchRow[], label: string | null): WatchRow | null {
-  if (!label) return watches.length === 1 ? watches[0] : null;
-  const l = label.toLowerCase();
+function nimSystemPrompt(): string {
   return (
-    watches.find((w) => (w.label ?? "").toLowerCase().includes(l)) ??
-    watches.find((w) => w.id.toLowerCase().includes(l)) ??
-    null
+    "Extract a watch request from the user message into JSON with exactly these keys:\n" +
+    '{"product_name": string, "target_price": number|null, "condition": string, "field": "price"|"stock"}\n' +
+    '- product_name: the product being watched (e.g. "Sony A7IV").\n' +
+    '- target_price: the numeric threshold, or null for stock watches.\n' +
+    '- condition: one of "<", "<=", ">", ">=", "==", "in_stock", "out_of_stock".\n' +
+    '- field: "price" if it is a price threshold, "stock" if it is about availability.\n' +
+    'Respond with ONLY the JSON object — no prose, no markdown fences.'
   );
 }
 
-interface LLMParsedWatch {
-  url?: string;
-  label?: string;
-  intent?: string;
-  field?: string;
-  operator?: string;
-  target?: string | null;
-}
-
-async function llmParseWatch(msg: string): Promise<Action | null> {
+export async function parseIntentNim(msg: string): Promise<ParsedIntent | null> {
   try {
-    const sys =
-      'You extract a watch request from a user message into JSON with exactly these keys: ' +
-      '{"url": string, "label": string, "intent": string, "field": "price"|"stock", ' +
-      '"operator": "<"|"<="|">"|">="|"=="|"in_stock"|"out_of_stock", "target": string|null}. ' +
-      'url defaults to "/demo/target". target is a number as a string (e.g. "800"), or null for stock. ' +
-      "Respond with ONLY the JSON object, no prose, no markdown fences.";
     const raw = await callLLM(MODELS.conversational, msg, {
-      system: sys,
+      system: nimSystemPrompt(),
       maxTokens: 300,
       temperature: 0,
     });
     const json = raw.replace(/```(?:json)?/gi, "").trim();
-    const obj = JSON.parse(json) as LLMParsedWatch;
-    if (!obj.field) return null;
+    const start = json.indexOf("{");
+    const end = json.lastIndexOf("}");
+    if (start === -1 || end === -1) return null;
+    const obj = JSON.parse(json.slice(start, end + 1)) as {
+      product_name?: string;
+      target_price?: number | null;
+      condition?: string;
+      field?: string;
+    };
+    const condition = String(obj.condition ?? "<");
+    const field = obj.field === "stock" ? "stock" : "price";
     return {
-      type: "create",
-      label: obj.label ?? "watch",
-      url: obj.url ?? DEMO_URL,
-      intent: obj.intent ?? msg,
-      field: obj.field === "stock" ? "stock" : "price",
-      operator: obj.operator ?? "<",
-      target: obj.target ?? null,
+      product_name: obj.product_name ?? "Sony A7IV",
+      target_price: obj.target_price ?? null,
+      condition,
+      field,
     };
   } catch {
     return null;
   }
 }
 
+// ---- entry point ----
+
 export interface AgentReply {
   action: string;
   message: string;
-  query?: string;
-  watches?: WatchRow[];
   watch?: WatchRow;
+  watches?: WatchRow[];
   alert?: WatchRow;
   events?: string[];
+  parsed?: ParsedIntent;
 }
 
 export async function handleAgentMessage(msg: string): Promise<AgentReply> {
-  let action = parseAction(msg);
+  const trimmed = msg.trim();
+  const watches = await getWatches();
 
-  if (
-    action.type === "find" &&
-    /(watch|track|monitor|tell me when|alert me|notify|under|in stock|restock|\$\d+)/i.test(msg)
-  ) {
-    const parsed = await llmParseWatch(msg);
-    if (parsed) action = parsed;
+  // Convenience intents (not LLM).
+  if (/^(list|show)\b/i.test(trimmed) || /what (am i|are you) watching/i.test(trimmed)) {
+    if (watches.length === 0) {
+      return { action: "list", message: "You're not watching anything yet.", watches };
+    }
+    const lines = watches.map((w) => `• ${w.id} — ${w.label ?? w.product_name ?? w.url} (${w.status})`);
+    return {
+      action: "list",
+      message: `You're watching ${watches.length} thing${watches.length === 1 ? "" : "s"}:\n${lines.join("\n")}`,
+      watches,
+    };
   }
 
-  switch (action.type) {
-    case "create": {
-      const watch = await createWatchFromIntent({ ...action, query: subjectFor(msg) });
-      const when =
-        action.field === "stock"
-          ? "the moment it comes back in stock"
-          : action.target
-            ? `the moment the price drops below $${action.target}`
-            : "whenever the price changes";
-      return {
-        action: "create",
-        message: `Done. Watch ${watch.id} is live — I'll check "${watch.label}" every 15 minutes and tell you ${when}. First check runs now.`,
-        query: subjectFor(msg),
-        watch,
-        watches: await getWatches(),
-      };
-    }
+  if (/(cancel|delete|remove|stop|pause)/i.test(trimmed)) {
+    const target = watches[0];
+    if (!target) return { action: "cancel", message: "Nothing to cancel yet.", watches };
+    await deleteWatch(target.id);
+    return {
+      action: "cancel",
+      message: `Done — I stopped watching ${target.label ?? target.product_name ?? target.id}.`,
+      watches: await getWatches(),
+    };
+  }
 
-    case "list": {
-      const watches = await getWatches();
-      if (watches.length === 0) {
-        return {
-          action: "list",
-          message: "You're not watching anything yet. Tell me what to keep an eye on.",
-          watches,
-        };
-      }
-      const lines = watches.map((w) => `• ${w.id} — ${w.label ?? w.url} (${w.status})`);
-      return {
-        action: "list",
-        message: `You're watching ${watches.length} thing${watches.length === 1 ? "" : "s"}:\n${lines.join("\n")}`,
-        watches,
-      };
-    }
-
-    case "check": {
-      const watches = await getWatches();
-      const target = action.label ? matchWatch(watches, action.label) : watches[0];
-      if (!target) {
-        return {
-          action: "check",
-          message: 'I don\'t have a watch by that name yet — try "watch the PS5 under $800" first.',
-          watches,
-        };
-      }
-      const run = await checkWatch(target.id);
-      const tail = run.alerted
-        ? ` 🎯 Condition met: ${run.value}. Alert raised.`
-        : run.value == null
-          ? ` I couldn't read a value yet — I'll keep checking.`
-          : ` Currently ${target.field === "price" ? `$${run.value}` : run.value}. Still watching.`;
+  if (/(check|scrape|update me|status|how.*(going|looking))/i.test(trimmed)) {
+    const target = watches[0];
+    if (!target) {
       return {
         action: "check",
-        message: `Checked ${run.watch.label ?? run.watch.id}.${tail}`,
-        watch: run.watch,
-        watches: await getWatches(),
-        alert: run.alerted ? run.watch : undefined,
-      };
-    }
-
-    case "cancel": {
-      const watches = await getWatches();
-      const target = action.label ? matchWatch(watches, action.label) : watches[0];
-      if (!target) {
-        return { action: "cancel", message: "Nothing by that name to cancel.", watches };
-      }
-      await deleteWatch(target.id);
-      return {
-        action: "cancel",
-        message: `Done. I stopped watching ${target.label ?? target.id}.`,
-        watches: await getWatches(),
-      };
-    }
-
-    case "explain": {
-      const watches = await getWatches();
-      const target = action.label ? matchWatch(watches, action.label) : watches[0];
-      if (!target) {
-        return { action: "explain", message: "No watch to explain yet.", watches };
-      }
-      const scars = target.scar_count ?? 0;
-      return {
-        action: "explain",
-        message: `For ${target.label ?? target.id}: I extract "${target.field}" with the selector "${target.selector ?? "(none)"}". It's healed ${scars} time${scars === 1 ? "" : "s"}. The scar log shows every break and repair — an immune-system log, not a museum.`,
-        watch: target,
+        message: "I'm not watching anything yet — try \"Watch the Sony A7IV and alert me when it drops below $800\".",
         watches,
       };
     }
-
-    case "find": {
-      return {
-        action: "find",
-        message: `Here's what I found on “${action.query}”.`,
-        query: action.query,
-        watches: await getWatches(),
-      };
-    }
+    const run: RunResult = await runScrapePass(target.id);
+    const suffix = run.alerted
+      ? ` 🔔 Condition met — ${run.value}.`
+      : run.value != null
+        ? ` Currently ${target.field === "price" ? `$${run.value}` : run.value}.`
+        : " I couldn't read a value — still watching.";
+    return {
+      action: "check",
+      message: `Checked ${target.label ?? target.product_name ?? target.id}.${suffix}`,
+      watch: run.watch,
+      watches: await getWatches(),
+      alert: run.alerted ? run.watch : undefined,
+      events: run.events,
+    };
   }
+
+  // Primary path: watch creation. Deterministic first (instant, reliable for
+  // the demo), NIM as the structured-JSON authority for novel phrasing.
+  let parsed = parseIntentDeterministic(trimmed);
+  if (!parsed) parsed = await parseIntentNim(trimmed);
+
+  if (!parsed) {
+    return {
+      action: "unknown",
+      message: "I watch pages and alert you on change. Try: \"Watch the Sony A7IV and alert me when it drops below $800\".",
+      watches,
+    };
+  }
+
+  const field = parsed.field;
+  const operator = parsed.condition;
+  const target = field === "price" && parsed.target_price != null ? String(parsed.target_price) : null;
+
+  const watch = await createWatchFromIntent({
+    label: field === "stock" ? `${parsed.product_name} (${operator === "out_of_stock" ? "out of stock" : "in stock"})` : `${parsed.product_name} under $${target ?? "?"}`,
+    url: STORE_URL,
+    intent: `Find the ${field} for the ${parsed.product_name} on this page`,
+    field,
+    operator,
+    target,
+    query: parsed.product_name,
+  });
+
+  // First real scrape right now.
+  const run = await runScrapePass(watch.id);
+
+  const when =
+    field === "stock"
+      ? operator === "out_of_stock"
+        ? "the moment it goes out of stock"
+        : "the moment it's back in stock"
+      : `the moment the price drops below $${target}`;
+
+  // run.value already carries its natural form ("$899" or "In Stock").
+  const current = run.value;
+
+  let message = `Watching ${parsed.product_name}.`;
+  if (current) message += ` Currently ${current}.`;
+  message += ` I'll tell you ${when}.`;
+  if (run.alerted) message += ` 🔔 Actually — condition already met: ${current}.`;
+
+  return {
+    action: "create",
+    message,
+    watch: run.watch,
+    watches: await getWatches(),
+    alert: run.alerted ? run.watch : undefined,
+    events: run.events,
+    parsed,
+  };
 }

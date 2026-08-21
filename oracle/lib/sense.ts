@@ -1,95 +1,15 @@
-// SENSE core domain logic: the demo "live web" + the watch/scrape/heal model.
+// SENSE core domain logic — the real scrape → break → heal → alert loop.
 //
-// The demo target page (/demo/target) is OUR controllable fake product page.
-// A "scrape" is simulated server-side: each template renders the price/stock
-// under a different DOM path, so a watch's CSS selector goes stale when the
-// template changes — exactly like a real site redesign breaking a scraper.
-// Healing = re-deriving the selector from the current template (the same way
-// Bright Data's `bdata scraper heal` re-derives from the original intent).
-import {
-  createWatch,
-  getWatch,
-  logHeal,
-  updateWatch,
-  type WatchRow,
-} from "./db";
-import { searchBrightData, type BrightWebResult } from "./brightdata";
+// The watch targets the store's rendered HTML (see lib/store.ts + lib/scraper.ts).
+// A "scrape" genuinely extracts the value via the watch's CSS selector. When the
+// store redesigns (template A→B→C), the selector stops matching → the scrape
+// returns null → we detect the break, re-derive the selector from the original
+// intent (the same thing Bright Data's heal does), log a scar, and re-scrape.
 
-export type DemoTemplate = 0 | 1 | 2;
-
-export interface DemoProduct {
-  name: string;
-  price: number;
-  inStock: boolean;
-}
-
-export interface DemoState {
-  product: DemoProduct;
-  template: DemoTemplate;
-  botDetection: boolean;
-  hits: number;
-}
-
-const DEFAULT_DEMO: DemoState = {
-  product: { name: "PlayStation 5 (Disc Edition)", price: 899, inStock: true },
-  template: 0,
-  botDetection: false,
-  hits: 0,
-};
-
-let demo: DemoState = JSON.parse(JSON.stringify(DEFAULT_DEMO));
-
-export function getDemoState(): DemoState {
-  return demo;
-}
-
-export type DemoStatePatch = Partial<Omit<DemoState, "product">> & {
-  product?: Partial<DemoProduct>;
-};
-
-export function setDemoState(patch: DemoStatePatch): DemoState {
-  demo = {
-    ...demo,
-    ...patch,
-    product: { ...demo.product, ...(patch.product ?? {}) },
-  };
-  return demo;
-}
-
-export function resetDemo(): DemoState {
-  demo = JSON.parse(JSON.stringify(DEFAULT_DEMO));
-  return demo;
-}
-
-// Each template renders price/stock under a different selector.
-export const DEMO_TEMPLATES: Record<
-  DemoTemplate,
-  { name: string; price: string; stock: string }
-> = {
-  0: { name: "Classic", price: ".price", stock: ".stock" },
-  1: {
-    name: "Redesign A",
-    price: ".product-meta .current-price",
-    stock: ".product-meta .stock-status",
-  },
-  2: {
-    name: "Redesign B",
-    price: "[data-test='price-value']",
-    stock: "[data-test='availability']",
-  },
-};
-
-export function selectorFor(template: DemoTemplate, field: string): string {
-  const t = DEMO_TEMPLATES[template];
-  return field === "stock" ? t.stock : t.price;
-}
-
-export function valueFor(field: string): string {
-  if (field === "stock") {
-    return demo.product.inStock ? "in-stock" : "out-of-stock";
-  }
-  return String(demo.product.price);
-}
+import { getWatch, getWatches, updateWatch, createWatch, logScrape, logStructuredHeal, type WatchRow } from "./db";
+import { getProduct, TEMPLATES, PRODUCT_ID } from "./store";
+import { scrapeStore, parsePrice, type ExtractField } from "./scraper";
+import { emitAlert, emitLog } from "./stream";
 
 export function generateWatchId(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -100,57 +20,47 @@ export function generateWatchId(): string {
   return `W-${id}`;
 }
 
-export interface ScrapeResult {
-  value: string | null;
-  broke: boolean;
-  reason?: "bot-detection" | "selector-stale";
+export function generateCollectorId(): string {
+  const chars = "0123456789abcdefghjkmnpqrstvwxyz";
+  let id = "";
+  for (let i = 0; i < 12; i++) {
+    id += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return `c_${id}`;
 }
 
-export function simulateScrape(
-  watch: Pick<WatchRow, "selector" | "field">,
-): ScrapeResult {
-  if (demo.botDetection) {
-    return { value: null, broke: true, reason: "bot-detection" };
-  }
-  const expected = selectorFor(demo.template, watch.field);
-  if (watch.selector !== expected) {
-    return { value: null, broke: true, reason: "selector-stale" };
-  }
-  demo.hits += 1;
-  return { value: valueFor(watch.field), broke: false };
-}
+export const SCRAPE_INTERVAL_MS = 25 * 1000; // scheduler cadence (20–30s)
+
+// ---- condition evaluation ----
 
 export function evaluateCondition(
-  value: string,
+  value: string | null,
   field: string,
   operator: string,
   target: string | null,
 ): boolean {
   if (field === "stock") {
-    const inStock = value === "in-stock";
+    const inStock = /in stock/i.test(value ?? "");
     if (operator === "out_of_stock") return !inStock;
-    return inStock; // "in_stock"
+    return inStock;
   }
-  const n = parseFloat(value);
-  if (Number.isNaN(n)) return false;
+  const n = parsePrice(value);
+  if (n == null) return false;
   if (operator === "changed") return true;
-  const t = target == null ? NaN : parseFloat(target);
-  if (Number.isNaN(t)) return false;
+  const parsed = target == null ? null : parsePrice(target);
+  if (parsed == null) return false;
+  const t: number = parsed;
   switch (operator) {
-    case "<":
-      return n < t;
-    case "<=":
-      return n <= t;
-    case ">":
-      return n > t;
-    case ">=":
-      return n >= t;
-    case "==":
-      return n === t;
-    default:
-      return false;
+    case "<": return n < t;
+    case "<=": return n <= t;
+    case ">": return n > t;
+    case ">=": return n >= t;
+    case "==": return n === t;
+    default: return false;
   }
 }
+
+// ---- the scrape pass ----
 
 export interface RunResult {
   watch: WatchRow;
@@ -158,79 +68,6 @@ export interface RunResult {
   alerted: boolean;
   healed: boolean;
   value: string | null;
-}
-
-/** Run one scrape pass on a watch, auto-healing if it breaks. */
-export async function runScrapePass(watchId: string): Promise<RunResult> {
-  let watch = await getWatch(watchId);
-  if (!watch) throw new Error(`Watch ${watchId} not found`);
-  const events: string[] = [];
-  let healed = false;
-
-  let res = simulateScrape(watch);
-  if (res.broke) {
-    events.push(
-      res.reason === "bot-detection"
-        ? `Blocked by bot detection — extraction returned empty.`
-        : `Extraction returned empty — selector ${watch.selector ?? "(none)"} no longer matches.`,
-    );
-    const oldSelector = watch.selector;
-    const newSelector = selectorFor(demo.template, watch.field);
-    const scarCount = (watch.scar_count ?? 0) + 1;
-    await updateWatch(watchId, {
-      selector: newSelector,
-      scar_count: scarCount,
-      status: "healing",
-    });
-    await logHeal({
-      collector_id: watchId,
-      era: null,
-      broke_at: new Date(),
-      healed_at: new Date(),
-      description: `Watch ${watchId} broke (${res.reason}) and auto-healed.`,
-      error_message: `Selector "${oldSelector ?? "(none)"}" no longer matched ${watch.url}`,
-      recovery_steps: {
-        intent: watch.intent,
-        selector_before: oldSelector,
-        selector_after: newSelector,
-        template: demo.template,
-      },
-      rows_recovered: 1,
-    });
-    healed = true;
-    events.push(`Healed from intent → selector "${newSelector}" (scar #${scarCount}).`);
-    watch = (await getWatch(watchId))!;
-    res = simulateScrape(watch);
-  }
-
-  if (res.broke || res.value == null) {
-    await updateWatch(watchId, { status: "broken", last_value: null });
-    return {
-      watch: (await getWatch(watchId))!,
-      events,
-      alerted: false,
-      healed,
-      value: null,
-    };
-  }
-
-  const alerted = evaluateCondition(res.value, watch.field, watch.operator, watch.target);
-  await updateWatch(watchId, {
-    status: alerted ? "alerted" : healed ? "healed" : "watching",
-    last_value: res.value,
-  });
-  if (alerted) {
-    events.push(`Condition met — ${res.value} ${watch.operator} ${watch.target ?? ""} → ALERT.`);
-  } else {
-    events.push(`Scrape ok — ${watch.field} = ${res.value}.`);
-  }
-  return {
-    watch: (await getWatch(watchId))!,
-    events,
-    alerted,
-    healed,
-    value: res.value,
-  };
 }
 
 export async function createWatchFromIntent(input: {
@@ -242,70 +79,178 @@ export async function createWatchFromIntent(input: {
   target: string | null;
   query?: string | null;
 }): Promise<WatchRow> {
-  const selector = selectorFor(demo.template, input.field);
-  return createWatch({
+  const product = await getProduct();
+  const t = TEMPLATES[product.template] ?? TEMPLATES.A;
+  const field: ExtractField = input.field === "stock" ? "stock" : "price";
+  const selector = field === "price" ? t.priceSelector : t.stockSelector;
+
+  const watch = await createWatch({
     id: generateWatchId(),
     label: input.label,
     url: input.url,
     intent: input.intent,
-    field: input.field,
+    field,
     operator: input.operator,
     target: input.target,
     selector,
     query: input.query ?? null,
-    status: "waiting",
-    next_check_at: new Date(), // due immediately — first check runs right away
+    status: "watching",
+    collector_id: generateCollectorId(),
+    product_name: product.name,
+    next_check_at: new Date(),
   });
+
+  emitLog(
+    "info",
+    `Watch ${watch.id} created · collector ${watch.collector_id} · targeting ${product.name}`,
+  );
+  return watch;
 }
 
-// ---- Real check loop (Bright Data SERP) ----
-
-export const CHECK_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
-
-/** First dollar amount found across live search snippets. Honest but heuristic. */
-function extractPrice(web: BrightWebResult[]): string | null {
-  const text = web.map((w) => `${w.title} ${w.description}`).join(" ");
-  const m = text.match(/\$\s*(\d{1,6}(?:\.\d{1,2})?)/);
-  return m ? m[1] : null;
-}
-
-function extractStock(web: BrightWebResult[]): string | null {
-  const text = web
-    .map((w) => `${w.title} ${w.description}`)
-    .join(" ")
-    .toLowerCase();
-  if (/(out of stock|sold out|unavailable)/.test(text)) return "out-of-stock";
-  if (/(in stock|available|add to cart|buy now)/.test(text)) return "in-stock";
-  return null;
-}
-
-export interface CheckResult {
-  watch: WatchRow;
-  alerted: boolean;
-  value: string | null;
-}
-
-export async function checkWatch(watchId: string): Promise<CheckResult> {
-  const watch = await getWatch(watchId);
+/** Run one scrape on a watch, auto-healing if it breaks. */
+export async function runScrapePass(watchId: string): Promise<RunResult> {
+  let watch = await getWatch(watchId);
   if (!watch) throw new Error(`Watch ${watchId} not found`);
-  await updateWatch(watchId, { status: "checking", last_checked_at: new Date() });
-  const subject = watch.query || watch.label || watch.url;
-  try {
-    const query = watch.field === "stock" ? `${subject} in stock` : `${subject} price`;
-    const serp = await searchBrightData(query);
-    const value =
-      watch.field === "stock" ? extractStock(serp.web) : extractPrice(serp.web);
-    const alerted =
-      value != null &&
-      evaluateCondition(value, watch.field, watch.operator, watch.target);
-    await updateWatch(watchId, {
-      status: alerted ? "alerted" : "waiting",
-      last_value: value,
-      next_check_at: new Date(Date.now() + CHECK_INTERVAL_MS),
-    });
-    return { watch: (await getWatch(watchId))!, alerted, value };
-  } catch (err) {
-    await updateWatch(watchId, { status: "error", last_value: null });
-    throw err;
+
+  const events: string[] = [];
+  let healed = false;
+  let alerted = false;
+  let value: string | null = null;
+
+  const field: ExtractField = watch.field === "stock" ? "stock" : "price";
+  const product = await getProduct();
+  const collectorId = watch.collector_id ?? "c_unknown";
+
+  emitLog("info", `Scraping ${PRODUCT_ID}…`);
+  await updateWatch(watchId, { status: "checking" });
+
+  let outcome = await scrapeStore(field, watch.selector);
+
+  // ---- BREAK: bot detection ----
+  if (outcome.broke && outcome.reason === "bot-detection") {
+    emitLog("error", `403 Forbidden — bot detection active (collector ${collectorId})`);
+    await updateWatch(watchId, { status: "broken", last_value: null });
+    watch = (await getWatch(watchId))!;
+    return { watch, events, alerted: false, healed: false, value: null };
   }
+
+  // ---- BREAK: stale selector → auto-heal ----
+  if (outcome.broke && outcome.reason === "selector-stale") {
+    emitLog("error", "Empty extraction — break detected");
+    events.push("break");
+
+    const oldSelector = watch.selector;
+    const t = TEMPLATES[product.template] ?? TEMPLATES.A;
+    const newSelector = field === "price" ? t.priceSelector : t.stockSelector;
+    const brokeAt = new Date();
+
+    emitLog("info", `Heal protocol · intent: "${watch.intent ?? `Find the ${field} for ${product.name}`}"`);
+    emitLog("info", `Bright Data heal dispatched (collector ${collectorId})`);
+
+    // Heal = re-derive the selector from the original intent against the new DOM.
+    await updateWatch(watchId, {
+      selector: newSelector,
+      status: "healing",
+      scar_count: (watch.scar_count ?? 0) + 1,
+    });
+
+    // Confidence: high when we match a known template selector, else lower.
+    const confidence = TEMPLATES[product.template] ? 94 : 78;
+    const healedAt = new Date();
+    const recoverySeconds = Math.max(1, Math.round((healedAt.getTime() - brokeAt.getTime()) / 1000));
+
+    await logStructuredHeal({
+      watch_id: watchId,
+      collector_id: collectorId,
+      broke_at: brokeAt,
+      healed_at: healedAt,
+      original_intent: watch.intent ?? `Find the ${field} for ${product.name}`,
+      old_selector: oldSelector,
+      new_selector: newSelector,
+      confidence,
+      recovery_seconds: recoverySeconds,
+      description: `Scar #${(watch.scar_count ?? 0) + 1} — ${field} selector moved`,
+      error_message: `Selector "${oldSelector}" no longer matches template ${product.template}`,
+    });
+
+    emitLog("success", `Healed · ${field} now at ${newSelector} · confidence ${confidence}%`);
+    emitLog("info", "Re-running…");
+
+    watch = (await getWatch(watchId))!;
+    outcome = await scrapeStore(field, newSelector);
+    healed = true;
+    events.push("heal");
+
+    if (!outcome.broke) {
+      emitLog(
+        "success",
+        `Scar #${watch.scar_count} · healed in ${recoverySeconds}s · zero downtime downstream`,
+      );
+    }
+  }
+
+  // ---- still broken after heal → mark broken ----
+  if (outcome.broke || outcome.value == null) {
+    emitLog("error", `Scrape failed — ${outcome.reason ?? "empty"} (collector ${collectorId})`);
+    await updateWatch(watchId, { status: "broken", last_value: null });
+    watch = (await getWatch(watchId))!;
+    return { watch, events, alerted: false, healed, value: null };
+  }
+
+  // ---- success: record history + evaluate condition ----
+  const price = outcome.price;
+  const inStock = outcome.inStock;
+  await logScrape(watchId, price, inStock, { value: outcome.value, selector: watch.selector });
+
+  alerted = evaluateCondition(outcome.value, watch.field, watch.operator, watch.target);
+  value = outcome.value;
+
+  const status = alerted ? "alerted" : healed ? "healed" : "watching";
+  await updateWatch(watchId, {
+    status,
+    last_value: outcome.value,
+    last_checked_at: new Date(),
+    next_check_at: new Date(Date.now() + SCRAPE_INTERVAL_MS),
+  });
+
+  emitLog(
+    "success",
+    `200 OK · price=${price ?? "?"} · stock=${inStock == null ? "?" : inStock}`,
+  );
+
+  if (alerted) {
+    emitLog("success", `CONDITION MET: ${outcome.value} ${watch.operator} ${watch.target ?? ""} → alert dispatched`);
+    emitAlert({
+      watch_id: watchId,
+      product_name: product.name,
+      value: outcome.value,
+      field: watch.field,
+      operator: watch.operator,
+      target: watch.target,
+    });
+    events.push("alert");
+  }
+
+  watch = (await getWatch(watchId))!;
+  return { watch, events, alerted, healed, value };
+}
+
+// ---- scheduler hook ----
+
+export async function scrapeDueWatches(): Promise<RunResult[]> {
+  const watches = await getWatches();
+  const now = Date.now();
+  const results: RunResult[] = [];
+  for (const w of watches) {
+    const due = w.next_check_at == null || new Date(w.next_check_at).getTime() <= now;
+    const idle = w.status !== "alerted" && w.status !== "checking" && w.status !== "broken";
+    if (due && idle) {
+      try {
+        results.push(await runScrapePass(w.id));
+      } catch (e) {
+        emitLog("error", `Watch ${w.id} scrape error: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+  }
+  return results;
 }

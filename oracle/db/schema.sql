@@ -67,8 +67,46 @@ CREATE TABLE IF NOT EXISTS watches (
   updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
+-- SENSE watches (extended for the split-screen product)
+ALTER TABLE watches ADD COLUMN IF NOT EXISTS collector_id TEXT;
+ALTER TABLE watches ADD COLUMN IF NOT EXISTS product_name TEXT;
+
+-- Store (the controllable e-commerce page SENSE watches)
+CREATE TABLE IF NOT EXISTS products (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  price NUMERIC NOT NULL,
+  in_stock BOOLEAN NOT NULL DEFAULT true,
+  template TEXT NOT NULL DEFAULT 'A',
+  bot_detection BOOLEAN NOT NULL DEFAULT false
+);
+
+INSERT INTO products (id, name, price, in_stock, template, bot_detection)
+VALUES ('sony-a7iv', 'Sony A7IV (Body Only)', 899, true, 'A', false)
+ON CONFLICT (id) DO NOTHING;
+
+-- Scrape history (one row per real scrape per watch)
+CREATE TABLE IF NOT EXISTS scrape_history (
+  id SERIAL PRIMARY KEY,
+  watch_id TEXT,
+  price NUMERIC,
+  in_stock BOOLEAN,
+  raw JSONB,
+  scraped_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Heal ledger: structured scar rows (the immune-system log)
+ALTER TABLE heal_ledger ADD COLUMN IF NOT EXISTS watch_id TEXT;
+ALTER TABLE heal_ledger ADD COLUMN IF NOT EXISTS original_intent TEXT;
+ALTER TABLE heal_ledger ADD COLUMN IF NOT EXISTS old_selector TEXT;
+ALTER TABLE heal_ledger ADD COLUMN IF NOT EXISTS new_selector TEXT;
+ALTER TABLE heal_ledger ADD COLUMN IF NOT EXISTS confidence INTEGER;
+ALTER TABLE heal_ledger ADD COLUMN IF NOT EXISTS recovery_seconds INTEGER;
+
 -- Helpful indexes for the most common lookups
 CREATE INDEX IF NOT EXISTS idx_scraped_data_category_era ON scraped_data (category, era);
 CREATE INDEX IF NOT EXISTS idx_scraped_data_era ON scraped_data (era);
 CREATE INDEX IF NOT EXISTS idx_user_queries_created_at ON user_queries (created_at);
 CREATE INDEX IF NOT EXISTS idx_heal_ledger_collector ON heal_ledger (collector_id);
+CREATE INDEX IF NOT EXISTS idx_heal_ledger_watch ON heal_ledger (watch_id);
+CREATE INDEX IF NOT EXISTS idx_scrape_history_watch ON scrape_history (watch_id);

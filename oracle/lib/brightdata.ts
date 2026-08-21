@@ -48,6 +48,41 @@ export async function healScraper(description: string): Promise<string> {
   return command;
 }
 
+/**
+ * Invoke the Bright Data CLI heal server-side (documented path for healing).
+ * The CLI must be pre-authenticated in the environment (BRIGHTDATA_API_KEY).
+ * Used only in production; the demo heal re-derives the selector in-process
+ * against the live store HTML (the same semantic action, deterministic).
+ */
+export async function healCollectorCli(
+  collectorId: string,
+  intent: string,
+): Promise<{ stdout: string; code: number }> {
+  const { spawn } = await import("node:child_process");
+  const env = {
+    ...process.env,
+    BRIGHTDATA_API_KEY: process.env.BRIGHT_DATA_API_KEY ?? "",
+  };
+  const args = [
+    "-y",
+    "-p",
+    "@brightdata/cli",
+    "bdata",
+    "scraper",
+    "heal",
+    collectorId,
+    intent,
+  ];
+  return new Promise((resolve) => {
+    const child = spawn("npx", args, { env, shell: true });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d) => (stdout += d.toString()));
+    child.stderr.on("data", (d) => (stderr += d.toString()));
+    child.on("close", (code) => resolve({ stdout: stdout || stderr, code: code ?? -1 }));
+  });
+}
+
 /** Scrape a historical snapshot of a page from the Wayback Machine. */
 export async function scrapeWaybackSnapshot(
   year: number,
