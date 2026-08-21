@@ -51,6 +51,8 @@ const QUICK_CARDS = [
   { icon: "📊", title: "Scar log", sub: "show heal history" },
 ];
 
+const HOME = "home";
+
 function stamp(ts: number): string {
   const d = new Date(ts);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
@@ -65,7 +67,10 @@ export default function SenseChat({
   onHealRipple?: () => void;
   onWatchCreated?: () => void;
 }) {
-  const [messages, setMessages] = useState<Message[]>([]);
+  // Each watch is its own conversation thread, keyed by watch id. "home" is
+  // the new-chat / welcome thread.
+  const [threads, setThreads] = useState<Record<string, Message[]>>({ [HOME]: [] });
+  const [activeId, setActiveId] = useState<string>(HOME);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [watches, setWatches] = useState<Watch[]>([]);
@@ -80,7 +85,14 @@ export default function SenseChat({
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages]);
+  }, [threads, activeId]);
+
+  const activeMessages = threads[activeId] ?? [];
+  const activeWatch = watches.find((w) => w.id === activeId) ?? null;
+
+  function appendTo(id: string, msg: Message) {
+    setThreads((prev) => ({ ...prev, [id]: [...(prev[id] ?? []), msg] }));
+  }
 
   async function refreshWatches() {
     try {
@@ -102,15 +114,12 @@ export default function SenseChat({
         const a: AlertPayload = JSON.parse(e.data);
         setNewAlertId(a.watch_id);
         const value = a.field === "price" ? `$${a.value}` : a.value;
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "agent",
-            text: `${a.product_name} hit ${value} — condition met (${a.operator} ${a.target ?? ""}).`,
-            alert: true,
-            ts: Date.now(),
-          },
-        ]);
+        appendTo(a.watch_id, {
+          role: "agent",
+          text: `${a.product_name} hit ${value} — condition met (${a.operator} ${a.target ?? ""}).`,
+          alert: true,
+          ts: Date.now(),
+        });
         setTimeout(() => setNewAlertId(null), 1200);
         refreshWatches();
       } catch {
@@ -122,14 +131,22 @@ export default function SenseChat({
       clearInterval(t);
       es.close();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Quick-watch events from the storefront (Watch buttons on product cards).
   useEffect(() => {
     const handler = (e: Event) => {
-      const d = (e as CustomEvent).detail as { message?: string; watches?: Watch[] } | undefined;
-      if (d?.message) {
-        setMessages((prev) => [...prev, { role: "agent", text: d.message!, ts: Date.now() }]);
+      const d = (e as CustomEvent).detail as
+        | { message?: string; watches?: Watch[]; watch?: { id: string; product_name?: string | null } }
+        | undefined;
+      if (d?.watch?.id) {
+        const id = d.watch.id;
+        if (d.watch.product_name) {
+          appendTo(id, { role: "user", text: `Watch ${d.watch.product_name}`, ts: Date.now() });
+        }
+        if (d.message) appendTo(id, { role: "agent", text: d.message, ts: Date.now() });
+        setActiveId(id);
       }
       if (Array.isArray(d?.watches)) setWatches(d.watches);
     };
@@ -152,7 +169,13 @@ export default function SenseChat({
     } catch {
       /* ignore */
     }
+    if (activeId === id) setActiveId(HOME);
     refreshWatches();
+  }
+
+  function newChat() {
+    setThreads((prev) => ({ ...prev, [HOME]: [] }));
+    setActiveId(HOME);
   }
 
   async function submit(text?: string) {
@@ -160,7 +183,10 @@ export default function SenseChat({
     if (!content || busy) return;
     setInput("");
     setBusy(true);
-    setMessages((prev) => [...prev, { role: "user", text: content, ts: Date.now() }]);
+    const fromId = activeId;
+    const userMsg: Message = { role: "user", text: content, ts: Date.now() };
+    appendTo(fromId, userMsg);
+
     try {
       const r = await fetch("/api/agent/chat", {
         method: "POST",
@@ -168,23 +194,34 @@ export default function SenseChat({
         body: JSON.stringify({ message: content }),
       });
       const d = await r.json();
-      setMessages((prev) => [...prev, { role: "agent", text: d.message ?? "…", ts: Date.now() }]);
+      const agentMsg: Message = { role: "agent", text: d.message ?? "…", ts: Date.now() };
+
+      if (d.action === "create" && d.watch) {
+        // The watch becomes its own thread; move the user message + reply into it.
+        const id = d.watch.id;
+        setThreads((prev) => {
+          const next = { ...prev };
+          next[fromId] = (next[fromId] ?? []).filter((m) => m !== userMsg);
+          next[id] = [userMsg, agentMsg];
+          return next;
+        });
+        setActiveId(id);
+      } else {
+        appendTo(fromId, agentMsg);
+      }
+
       if (Array.isArray(d.watches)) setWatches(d.watches);
       if (d.events?.includes("heal")) onHealRipple?.();
       if (d.action === "create") onWatchCreated?.();
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        { role: "agent", text: "I hit a snag — try again.", ts: Date.now() },
-      ]);
+      appendTo(fromId, { role: "agent", text: "I hit a snag — try again.", ts: Date.now() });
     } finally {
       setBusy(false);
     }
   }
 
   function quickCard(i: number) {
-    if (i === 0)
-      submit("Watch the iPhone 15 Pro and alert me when it drops below $949");
+    if (i === 0) submit("Watch the iPhone 15 Pro and alert me when it drops below $949");
     else if (i === 1) submit("Notify me when the iPhone 15 Pro is back in stock");
     else if (i === 2) submit("What am I watching?");
     else onOpenScars();
@@ -213,7 +250,7 @@ export default function SenseChat({
         </div>
 
         <button
-          onClick={() => setMessages([])}
+          onClick={newChat}
           className="mt-5 flex items-center justify-between rounded-[10px] bg-[#eef1f5] px-3 py-2.5 text-[14px] font-medium text-[#0071e3] transition hover:bg-[#e6eaf0]"
         >
           <span className="flex items-center gap-2">
@@ -230,14 +267,16 @@ export default function SenseChat({
             watches.map((w) => (
               <div
                 key={w.id}
-                className="group flex cursor-pointer items-center gap-2 rounded-[8px] px-2 py-2 transition hover:bg-[#e8e8ec]"
-                onClick={() => checkNow(w.id)}
+                onClick={() => setActiveId(w.id)}
+                className={`group flex cursor-pointer items-center gap-2 rounded-[8px] px-2 py-2 transition ${
+                  activeId === w.id ? "bg-[#e8e8ec]" : "hover:bg-[#e8e8ec]"
+                }`}
               >
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] bg-white text-[12px] text-[#0071e3]">
                   💬
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-[12.5px] text-[#1d1d1f]">
+                  <div className="truncate text-[12.5px] font-medium text-[#1d1d1f]">
                     {w.label ?? w.product_name ?? w.id}
                   </div>
                   <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-[#6e6e73]">
@@ -297,7 +336,15 @@ export default function SenseChat({
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-[57px] shrink-0 items-center justify-between border-b border-[#e7e7e9] px-5">
           <div className="flex items-center gap-2 text-[16px] font-semibold">
-            SENSE <span className="text-[13px] text-[#8e8e93]">⌄</span>
+            {activeId === HOME ? (
+              <>
+                SENSE <span className="text-[13px] text-[#8e8e93]">⌄</span>
+              </>
+            ) : (
+              <span className="max-w-[260px] truncate text-[14px]">
+                {activeWatch?.label ?? activeWatch?.product_name ?? activeId}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-4 text-[#6e6e73]">
             <span className="cursor-pointer transition hover:text-[#1d1d1f]">↗</span>
@@ -309,7 +356,7 @@ export default function SenseChat({
           ref={scrollRef}
           className="sense-scroll flex min-h-0 flex-1 flex-col overflow-y-auto px-6 py-6"
         >
-          {messages.length === 0 && (
+          {activeId === HOME && activeMessages.length === 0 && (
             <div className="flex flex-1 flex-col items-center justify-center text-center">
               <div className="ai-spark ai-spark-ring flex h-16 w-16 items-center justify-center rounded-[16px]">
                 <svg viewBox="0 0 24 24" fill="currentColor" className="h-8 w-8">
@@ -341,9 +388,26 @@ export default function SenseChat({
             </div>
           )}
 
+          {activeId !== HOME && activeMessages.length === 0 && (
+            <div className="flex flex-1 flex-col items-center justify-center text-center">
+              <div className="ai-spark flex h-12 w-12 items-center justify-center rounded-[12px]">
+                <svg viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6">
+                  <path d="M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8L12 2z" />
+                </svg>
+              </div>
+              <div className="mt-4 text-[15px] font-semibold text-[#1d1d1f]">
+                {activeWatch?.label ?? activeWatch?.product_name ?? "Watching"}
+              </div>
+              <div className="mt-1 text-[13px] text-[#6e6e73]">
+                {activeWatch?.last_value ? `Currently ${activeWatch.last_value}. ` : ""}
+                I&apos;ll message you here the moment it changes.
+              </div>
+            </div>
+          )}
+
           <div className="space-y-4">
             <AnimatePresence>
-              {messages.map((m, i) => (
+              {activeMessages.map((m, i) => (
                 <motion.div
                   key={i}
                   initial={{ opacity: 0, y: 8 }}
@@ -427,8 +491,13 @@ export default function SenseChat({
                 return (
                   <div
                     key={w.id}
-                    className={`min-w-[224px] max-w-[240px] shrink-0 rounded-[12px] border bg-white p-3 transition ${
-                      newAlertId === w.id ? "sense-tingle border-[#ff2d55]/60" : "border-[#e5e5e7]"
+                    onClick={() => setActiveId(w.id)}
+                    className={`min-w-[224px] max-w-[240px] shrink-0 cursor-pointer rounded-[12px] border bg-white p-3 transition ${
+                      newAlertId === w.id
+                        ? "sense-tingle border-[#ff2d55]/60"
+                        : activeId === w.id
+                          ? "border-[#0071e3]/50"
+                          : "border-[#e5e5e7]"
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
@@ -467,14 +536,20 @@ export default function SenseChat({
                       </span>
                       <span className="flex items-center gap-1">
                         <button
-                          onClick={() => checkNow(w.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            checkNow(w.id);
+                          }}
                           disabled={busy}
                           className="flex h-6 w-6 items-center justify-center rounded-[7px] border border-[#e5e5e7] text-[11px] text-[#6e6e73] transition hover:border-[#0071e3]/50 hover:text-[#0071e3] disabled:opacity-40"
                         >
                           ⟳
                         </button>
                         <button
-                          onClick={() => removeWatch(w.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeWatch(w.id);
+                          }}
                           disabled={busy}
                           className="flex h-6 w-6 items-center justify-center rounded-[7px] border border-[#e5e5e7] text-[11px] text-[#8e8e93] transition hover:border-[#ff2d55]/50 hover:text-[#ff2d55] disabled:opacity-40"
                         >
