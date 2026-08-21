@@ -237,6 +237,7 @@ function Storefront({
 }) {
   const featuredRef = useRef<HTMLDivElement>(null);
   const [highlight, setHighlight] = useState(false);
+  const heroProduct = FEATURED_PRODUCTS[0];
 
   const scrollToFeatured = () => {
     const card =
@@ -260,21 +261,40 @@ function Storefront({
       {/* Hero */}
       <div className="mx-6 mt-4 overflow-hidden rounded-[16px] bg-gradient-to-br from-[#fafafa] to-[#f1f1f4]">
         <div className="relative flex min-h-[260px] items-center px-8 py-8">
-          <div className="relative z-10 max-w-[320px]">
-            <h3 className="text-[34px] font-bold leading-[1.05] tracking-[-1px] text-[#1d1d1f]">
-              New season.
-              <br />
-              Elevated.
+          <div className="relative z-10 max-w-[340px]">
+            <span className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[#f56300]">
+              New
+            </span>
+            <h3 className="mt-1.5 text-[34px] font-bold leading-[1.02] tracking-[-1px] text-[#1d1d1f]">
+              {heroProduct.name}
             </h3>
-            <p className="mt-3 text-[14px] leading-snug text-[#6e6e73]">
-              Explore the latest in tech, style, and everyday essentials.
+            <p className="mt-1.5 text-[15px] leading-snug text-[#6e6e73]">
+              {heroProduct.tagline}
             </p>
-            <button
-              onClick={scrollToFeatured}
-              className="mt-5 rounded-full bg-[#0071e3] px-5 py-2 text-[13px] font-semibold text-white transition hover:bg-[#0077ed]"
-            >
-              Shop Now
-            </button>
+            <div className="mt-4 flex flex-wrap items-baseline gap-1.5">
+              <span className="text-[13px] text-[#6e6e73]">From</span>
+              <span className="text-[22px] font-semibold tracking-tight text-[#1d1d1f]">
+                ${heroProduct.price}
+              </span>
+              <span className="text-[13px] text-[#6e6e73]">
+                or ${(heroProduct.price / 24).toFixed(2)}/mo. for 24 mo.
+              </span>
+            </div>
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+              <button
+                onClick={scrollToFeatured}
+                className="rounded-full bg-[#0071e3] px-6 py-2.5 text-[14px] font-medium text-white transition hover:bg-[#0077ed]"
+              >
+                Shop Now
+              </button>
+              <button
+                onClick={() => onWatch(heroProduct.id)}
+                disabled={Boolean(watchingId)}
+                className="rounded-full border border-[#0071e3] px-5 py-2.5 text-[14px] font-medium text-[#0071e3] transition hover:bg-[#f0f7ff] disabled:opacity-50"
+              >
+                Watch with SENSE
+              </button>
+            </div>
           </div>
 
           {/* Product cluster */}
@@ -359,7 +379,9 @@ function Storefront({
                 <div className="mt-2 truncate text-[11px] font-semibold text-[#1d1d1f]">
                   {p.name}
                 </div>
-                <div className="mt-1 text-[11px] font-medium text-[#6e6e73]">${p.price}</div>
+                <div className="mt-1 text-[11px] text-[#6e6e73]">
+                  From <span className="font-medium text-[#1d1d1f]">${p.price}</span>
+                </div>
                 <div className="mt-1.5 flex gap-1">
                   {p.colors.map((c) => (
                     <span
@@ -655,6 +677,9 @@ function TemplateA(props: DetailProps) {
             <span className="text-[14px] text-[#6e6e73] line-through">{props.compare}</span>
             <span className="text-[14px] font-semibold text-[#c00]">Save {props.savePct}%</span>
           </div>
+          <div className="mt-1 text-[13px] text-[#6e6e73]">
+            or ${(props.meta.price / 24).toFixed(2)}/mo. for 24 mo.
+          </div>
           <span className={`stock mt-1 block text-[14px] font-semibold ${props.inStock ? "text-[#007a3d]" : "text-[#c00]"}`}>
             {props.stockLabel}
           </span>
@@ -703,6 +728,9 @@ function TemplateB(props: DetailProps) {
           </span>
           <span className="text-[14px] text-[#6e6e73] line-through">{props.compare}</span>
           <span className="text-[14px] font-semibold text-[#c00]">Save {props.savePct}%</span>
+        </div>
+        <div className="mt-1 text-[13px] text-[#6e6e73]">
+          or ${(props.meta.price / 24).toFixed(2)}/mo. for 24 mo.
         </div>
         <div className="mt-2">
           <span data-test="availability" className={`text-[14px] font-semibold ${props.inStock ? "text-[#007a3d]" : "text-[#c00]"}`}>
@@ -760,6 +788,9 @@ function TemplateC(props: DetailProps) {
             <span className="display-price text-[30px] font-bold tracking-tight">{props.price}</span>
             <span className="text-[14px] text-[#6e6e73] line-through">{props.compare}</span>
             <span className="text-[14px] font-semibold text-[#c00]">Save {props.savePct}%</span>
+          </div>
+          <div className="mt-1 text-[13px] text-[#6e6e73]">
+            or ${(props.meta.price / 24).toFixed(2)}/mo. for 24 mo.
           </div>
           <div className="mt-2">
             <span className={`availability-badge inline-flex rounded-full px-3 py-1 text-[13px] font-semibold ${props.inStock ? "bg-[#e5f6ec] text-[#007a3d]" : "bg-[#fdeaea] text-[#c00]"}`}>
