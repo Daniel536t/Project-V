@@ -315,25 +315,20 @@ function Storefront({
 
       {/* Hero */}
       <div className="mx-6 mt-4 overflow-hidden rounded-[16px] bg-gradient-to-br from-[#fafafa] to-[#f1f1f4]">
-        <div className="relative flex min-h-[260px] items-center px-8 py-8">
+        <div className="relative flex min-h-[300px] items-center px-8 py-8">
           <div className="relative z-10 max-w-[340px]">
-            <span className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[#f56300]">
-              New
-            </span>
-            <h3 className="mt-1.5 text-[34px] font-bold leading-[1.02] tracking-[-1px] text-[#1d1d1f]">
-              {heroProduct.name}
+            <h3 className="text-[36px] font-bold leading-[1.02] tracking-[-1px] text-[#1d1d1f]">
+              New season.
+              <br />
+              Elevated.
             </h3>
-            <p className="mt-1.5 text-[15px] leading-snug text-[#6e6e73]">
-              {heroProduct.tagline}
+            <p className="mt-4 text-[15px] leading-snug text-[#424245]">
+              Explore the latest in tech, style, and everyday essentials.
             </p>
-            <div className="mt-4 flex flex-wrap items-baseline gap-1.5">
-              <span className="text-[13px] text-[#6e6e73]">From</span>
-              <span className="text-[22px] font-semibold tracking-tight text-[#1d1d1f]">
-                ${heroProduct.price}
-              </span>
-              <span className="text-[13px] text-[#6e6e73]">
-                or ${(heroProduct.price / 24).toFixed(2)}/mo. for 24 mo.
-              </span>
+            <div className="mt-4 flex flex-wrap items-baseline gap-1.5 text-[13px] text-[#6e6e73]">
+              <span>{heroProduct.name} · from</span>
+              <span className="text-[20px] font-semibold text-[#1d1d1f]">${heroProduct.price}</span>
+              <span>or ${(heroProduct.price / 24).toFixed(2)}/mo. for 24 mo.</span>
             </div>
             <div className="mt-5 flex flex-wrap items-center gap-3">
               <button
@@ -352,12 +347,22 @@ function Storefront({
             </div>
           </div>
 
-          {/* Single iPhone hero — the product stands out on its own */}
-          <div className="absolute inset-y-0 right-0 hidden w-[54%] items-center justify-center pr-8 sm:flex">
+          {/* Product trio — three separate devices, iPhone 17 standing out in the center */}
+          <div className="absolute inset-y-0 right-0 hidden w-[58%] items-center justify-center gap-6 pr-7 sm:flex">
+            <img
+              src={HERO_IMAGES.buds}
+              alt="AirPods Pro"
+              className="h-[34%] w-auto rounded-[14px] object-contain drop-shadow-[0_14px_28px_-8px_rgba(0,0,0,0.28)]"
+            />
             <img
               src={HERO_IMAGES.phone}
               alt="iPhone 17 Pro"
-              className="max-h-[92%] w-auto rounded-[26px] object-contain drop-shadow-[0_28px_60px_-12px_rgba(0,0,0,0.4)]"
+              className="h-[88%] w-auto rounded-[22px] object-contain drop-shadow-[0_28px_60px_-12px_rgba(0,0,0,0.45)]"
+            />
+            <img
+              src={HERO_IMAGES.watch}
+              alt="Apple Watch"
+              className="h-[42%] w-auto rounded-[14px] object-contain drop-shadow-[0_14px_28px_-8px_rgba(0,0,0,0.28)]"
             />
           </div>
         </div>
