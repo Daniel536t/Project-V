@@ -50,44 +50,65 @@ export default function Home() {
 
   return (
     <div className="sense-scope relative h-screen w-screen overflow-hidden bg-sense-black font-sans text-sense-text">
-      {/* Particle web behind SENSE side only */}
-      <div className="pointer-events-none absolute inset-y-0 left-0 w-1/2">
-        <div className="absolute inset-0">
+      {/* ── Ambient depth ── */}
+      <div className="pointer-events-none absolute inset-0">
+        {/* Particle web behind SENSE side only */}
+        <div className="absolute inset-y-0 left-0 w-1/2">
           <ParticleWeb ripple={healRipple} />
+          <div
+            className="absolute left-4 top-24 h-80 w-80 rounded-full bg-sense-purple sense-glow"
+            style={{ opacity: 0.09 }}
+          />
+          <div
+            className="absolute -left-10 bottom-10 h-64 w-64 rounded-full bg-sense-electric sense-glow"
+            style={{ opacity: 0.05 }}
+          />
         </div>
-        {/* Ambient glow */}
+        {/* Faint purple wash on the store side */}
         <div
-          className="absolute left-4 top-20 h-72 w-72 bg-sense-purple sense-glow"
-          style={{ opacity: 0.08 }}
+          className="absolute right-0 top-0 h-72 w-96 rounded-full bg-sense-purple sense-glow"
+          style={{ opacity: 0.05 }}
+        />
+        {/* Vignette for depth */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(ellipse at 50% 40%, transparent 55%, rgba(0,0,0,0.5) 100%)",
+          }}
         />
       </div>
 
       {/* ── Top bar (56px) ── */}
-      <header className="relative z-20 flex h-14 items-center justify-between border-b border-white/5 px-6">
-        <div className="flex items-center gap-3">
-          <span className="font-display text-xl leading-none tracking-[0.05em] text-sense-electric">
-            SENSE
-          </span>
+      <header className="relative z-20 flex h-14 items-center justify-between border-b border-white/[0.06] bg-sense-black/60 px-6 backdrop-blur-md">
+        <div className="flex items-center gap-3.5">
+          <span className="sense-logo text-[22px] leading-none">SENSE</span>
           {product && (
-            <span className="flex items-center gap-1.5 rounded-full border border-sense-electric/30 bg-sense-electric/[0.06] px-2.5 py-0.5 font-mono text-[10px] text-sense-electric">
-              <span className="h-1.5 w-1.5 rounded-full bg-sense-electric" />
-              Live
+            <span className="flex items-center gap-1.5 rounded-full border border-sense-electric/25 bg-sense-electric/[0.07] px-2.5 py-1 font-mono text-[10px] font-medium tracking-wide text-sense-electric">
+              <span className="h-1.5 w-1.5 rounded-full bg-sense-electric shadow-[0_0_6px_#00d4ff]" />
+              Live · ${product.price}
             </span>
           )}
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <button
             onClick={() => setShowScars(true)}
-            className="flex items-center gap-1.5 rounded-full border border-white/10 bg-sense-tertiary/60 px-3 py-1 font-mono text-[11px] text-sense-muted transition hover:border-white/20"
+            className="sense-press group flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.03] px-3.5 py-1.5 font-mono text-[11px] text-sense-muted transition hover:border-sense-warning/30 hover:bg-white/[0.06] hover:text-sense-text"
           >
-            🕸 Scars
+            <span className="text-[13px] leading-none transition-transform duration-200 group-hover:-rotate-12">
+              🕸
+            </span>
+            <span>Scars</span>
             {scarCount > 0 && (
-              <span className="font-mono text-[11px] text-sense-warning">{scarCount}</span>
+              <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-sense-warning/15 px-1 font-mono text-[10px] font-semibold text-sense-warning">
+                {scarCount}
+              </span>
             )}
           </button>
-          <span className="rounded-full border border-white/5 bg-sense-tertiary/40 px-3 py-1 font-mono text-[10px] text-sense-dim">
-            Powered by Bright Data
+          <span className="hidden items-center gap-1.5 rounded-full border border-white/[0.06] bg-white/[0.02] px-3 py-1.5 font-mono text-[10px] text-sense-dim sm:flex">
+            Powered by{" "}
+            <span className="font-medium text-sense-muted">Bright Data</span>
           </span>
         </div>
       </header>
@@ -95,12 +116,12 @@ export default function Home() {
       {/* ── Split body ── */}
       <div className="flex h-[calc(100%-3.5rem)]">
         {/* LEFT: SENSE chat */}
-        <div className="relative z-10 flex w-1/2 flex-col border-r border-white/5">
+        <div className="relative z-10 flex w-1/2 min-w-0 flex-col border-r border-white/[0.06]">
           <SenseChat onHealRipple={() => setHealRipple((v) => !v)} />
         </div>
 
         {/* RIGHT: STORE + terminal strip */}
-        <div className="relative z-10 flex w-1/2 flex-col">
+        <div className="relative z-10 flex w-1/2 min-w-0 flex-col">
           <div className="relative min-h-0 flex-1">
             <StorePanel onOpenBreak={() => setShowBreak(true)} />
             <TerminalStrip />

@@ -672,3 +672,62 @@ h3 {
   filter: blur(120px);
   pointer-events: none;
 }
+
+/* ================================================================== *
+ * SENSE polish — shared utilities (spacing, hover, focus, glow)
+ * ================================================================== */
+
+/* Thin dark scrollbars everywhere */
+.sense-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.sense-scroll::-webkit-scrollbar-thumb { background: #23232b; border-radius: 6px; border: 2px solid transparent; background-clip: content-box; }
+.sense-scroll::-webkit-scrollbar-thumb:hover { background: #2e2e38; background-clip: content-box; border: 2px solid transparent; }
+.sense-scroll::-webkit-scrollbar-track { background: transparent; }
+
+/* Card hover — subtle lift + inner highlight, consistent everywhere */
+.sense-card {
+  position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.015));
+  transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+}
+.sense-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.sense-card:hover {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.025));
+  transform: translateY(-1px);
+}
+
+/* Interactive press — subtle scale for real buttons */
+.sense-press { transition: transform 0.12s ease, filter 0.12s ease; }
+.sense-press:active { transform: scale(0.97); }
+
+/* SENSE wordmark glow (Bangers, used only for the wordmark) */
+.sense-logo {
+  font-family: "Bangers", cursive;
+  letter-spacing: 0.06em;
+  color: var(--sense-electric);
+  text-shadow: 0 0 18px rgba(0, 212, 255, 0.45), 0 0 40px rgba(0, 212, 255, 0.18);
+}
+
+/* Input focus glow — shared by chat + popups */
+.sense-input {
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+.sense-input:focus-within {
+  border-color: rgba(0, 212, 255, 0.45);
+  box-shadow: 0 0 0 1px rgba(0, 212, 255, 0.25), 0 0 24px -6px rgba(0, 212, 255, 0.25);
+}
+
+/* Alert toast pulse ring */
+.sense-alert-ring { animation: alert-ring 1.2s ease-out infinite; }
+@keyframes alert-ring {
+  0% { box-shadow: 0 0 0 0 rgba(255, 45, 85, 0.35); }
+  100% { box-shadow: 0 0 0 14px rgba(255, 45, 85, 0); }
+}

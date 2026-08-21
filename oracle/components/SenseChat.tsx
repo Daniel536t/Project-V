@@ -136,10 +136,16 @@ export default function SenseChat({
   return (
     <div className="flex h-full flex-col">
       {/* Messages */}
-      <div ref={scrollRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
+      <div
+        ref={scrollRef}
+        className="sense-scroll min-h-0 flex-1 space-y-3.5 overflow-y-auto px-6 py-6"
+      >
         {messages.length === 0 && (
           <div className="flex h-full flex-col items-center justify-center text-center">
-            <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-sense-dim">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-sense-electric/20 bg-sense-electric/[0.06]">
+              <span className="text-xl">🕸️</span>
+            </div>
+            <div className="mt-5 font-mono text-[11px] uppercase tracking-[0.3em] text-sense-dim">
               SENSE
             </div>
             <p className="mt-3 max-w-xs text-[15px] leading-relaxed text-sense-muted">
@@ -153,17 +159,18 @@ export default function SenseChat({
           {messages.map((m, i) => (
             <motion.div
               key={i}
-              initial={{ opacity: 0, y: 10 }}
+              initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
               className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
             >
               <div
                 className={`max-w-[85%] whitespace-pre-line rounded-xl px-4 py-2.5 text-[14px] leading-relaxed ${
                   m.role === "user"
-                    ? "bg-sense-tertiary text-sense-text"
+                    ? "rounded-br-md bg-sense-tertiary text-sense-text"
                     : m.alert
-                      ? "sense-tingle sense-alert-border border border-sense-danger/40 bg-sense-danger/[0.08] text-sense-text"
-                      : "border-l-2 border-sense-electric bg-sense-tertiary/60 text-sense-text"
+                      ? "sense-tingle sense-alert-ring rounded-bl-md border border-sense-danger/40 bg-sense-danger/[0.08] text-sense-text"
+                      : "rounded-bl-md border-l-2 border-sense-electric bg-sense-tertiary/50 text-sense-text"
                 }`}
               >
                 {m.text}
@@ -173,9 +180,14 @@ export default function SenseChat({
         </AnimatePresence>
 
         {busy && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
-            <div className="rounded-xl border-l-2 border-sense-electric bg-sense-tertiary/60 px-4 py-2.5">
-              <span className="font-mono text-[13px] text-sense-muted">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="flex justify-start"
+          >
+            <div className="flex items-center gap-2.5 rounded-xl rounded-bl-md border-l-2 border-sense-electric bg-sense-tertiary/50 px-4 py-2.5">
+              <span className="h-3 w-3 animate-spin rounded-full border-2 border-sense-electric border-t-transparent" />
+              <span className="font-mono text-[12px] text-sense-muted">
                 {watches.length > 0 ? "Scraping…" : "Setting up a watch…"}
               </span>
             </div>
@@ -185,19 +197,23 @@ export default function SenseChat({
 
       {/* Active watches */}
       {watches.length > 0 && (
-        <div className="border-t border-white/5 px-6 py-3">
-          <div className="mb-2 flex items-center justify-between">
+        <div className="border-t border-white/[0.06] px-6 pb-1 pt-3.5">
+          <div className="mb-2.5 flex items-center justify-between">
             <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-sense-dim">
               Active watches
             </span>
-            <span className="font-mono text-[10px] text-sense-dim">{watches.length}</span>
+            <span className="font-mono text-[10px] text-sense-dim">
+              {watches.length}
+            </span>
           </div>
-          <div className="flex gap-2 overflow-x-auto pb-1">
+          <div className="sense-scroll -mx-1 flex gap-2.5 overflow-x-auto px-1 pb-3">
             {watches.map((w) => (
               <div
                 key={w.id}
-                className={`min-w-[220px] flex-1 shrink-0 rounded-lg border border-white/5 bg-sense-dark px-3 py-2.5 ${
-                  newAlertId === w.id ? "sense-tingle sense-alert-border" : ""
+                className={`sense-card min-w-[224px] max-w-[240px] flex-1 shrink-0 rounded-xl p-3.5 ${
+                  newAlertId === w.id
+                    ? "sense-tingle sense-alert-border border-sense-danger/40"
+                    : ""
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
@@ -206,22 +222,24 @@ export default function SenseChat({
                   </span>
                   <StatusChip status={w.status} />
                 </div>
-                <div className="mt-1.5 flex items-center justify-between font-mono text-[11px] text-sense-muted">
-                  <span>
-                    {w.last_value ?? "—"}{" "}
-                    <span className="text-sense-dim">
-                      {w.operator} {w.target ?? ""}
-                    </span>
+                <div className="mt-2 flex items-baseline justify-between font-mono">
+                  <span className="text-[15px] font-medium tracking-tight text-sense-text">
+                    {w.last_value ?? "—"}
+                  </span>
+                  <span className="text-[11px] text-sense-dim">
+                    {w.operator} {w.target ?? ""}
+                  </span>
+                </div>
+                <div className="mt-1.5 flex items-center justify-between">
+                  <span className="truncate font-mono text-[10px] text-sense-dim">
+                    {w.collector_id}
                   </span>
                   {w.scar_count > 0 && (
-                    <span className="text-sense-warning">{w.scar_count} scar{w.scar_count === 1 ? "" : "s"}</span>
+                    <span className="flex items-center gap-1 font-mono text-[10px] text-sense-warning">
+                      🕸 {w.scar_count}
+                    </span>
                   )}
                 </div>
-                {w.collector_id && (
-                  <div className="mt-1 truncate font-mono text-[10px] text-sense-dim">
-                    {w.collector_id}
-                  </div>
-                )}
               </div>
             ))}
           </div>
@@ -229,27 +247,30 @@ export default function SenseChat({
       )}
 
       {/* Input */}
-      <div className="border-t border-white/5 px-6 py-4">
+      <div className="border-t border-white/[0.06] px-6 py-4">
         {messages.length === 0 && (
           <button
             onClick={() => setInput(SUGGESTED)}
-            className="mb-3 rounded-lg border border-sense-electric/30 bg-sense-electric/[0.06] px-3 py-2 text-left text-[13px] text-sense-electric transition hover:bg-sense-electric/[0.12]"
+            className="sense-press group mb-3 flex w-full items-center gap-2.5 rounded-xl border border-sense-electric/20 bg-sense-electric/[0.05] px-4 py-3 text-left text-[13px] text-sense-electric transition hover:border-sense-electric/40 hover:bg-sense-electric/[0.1]"
           >
-            {SUGGESTED}
+            <span className="text-sm transition-transform duration-200 group-hover:translate-x-0.5">
+              ⚡
+            </span>
+            <span className="truncate">{SUGGESTED}</span>
           </button>
         )}
-        <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-sense-tertiary/60 px-4 py-2 focus-within:border-sense-electric/40">
+        <div className="sense-input flex items-center gap-2 rounded-xl border border-white/[0.08] bg-sense-tertiary/50 px-4 py-2.5">
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && submit()}
             placeholder="Watch something… e.g. 'Alert me when the A7IV drops below $800'"
-            className="flex-1 bg-transparent text-[14px] text-sense-text placeholder:text-sense-dim focus:outline-none"
+            className="min-w-0 flex-1 bg-transparent text-[14px] text-sense-text placeholder:text-sense-dim focus:outline-none"
           />
           <button
             onClick={() => submit()}
             disabled={busy || !input.trim()}
-            className="rounded-lg bg-sense-electric px-3.5 py-1.5 text-[13px] font-semibold text-black transition hover:brightness-110 disabled:opacity-30"
+            className="sense-press rounded-lg bg-sense-electric px-3.5 py-1.5 text-[13px] font-semibold text-black shadow-[0_0_18px_-4px_rgba(0,212,255,0.6)] transition hover:brightness-110 disabled:opacity-30 disabled:shadow-none"
           >
             {busy ? "…" : "Send"}
           </button>
