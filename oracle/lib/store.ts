@@ -211,21 +211,21 @@ function headerFull(): string {
   return `
 <header class="brand-bar">
   <div class="brand">aperture<b>.</b></div>
-  <div class="searchbar"><input placeholder="Search cameras, lenses, accessories"><button>Search</button></div>
+  <div class="searchbar"><input placeholder="Search sneakers, apparel, accessories"><button>Search</button></div>
 </header>
-<nav class="nav"><span>All</span><span>Cameras</span><span>Lenses</span><span>Accessories</span><span>Deals</span><span>Support</span></nav>`;
+<nav class="nav"><span>All</span><span>Sneakers</span><span>Apparel</span><span>Accessories</span><span>Deals</span><span>Support</span></nav>`;
 }
 
 function headerMinimal(): string {
   return `
 <header class="brand-bar" style="justify-content:space-between">
   <div class="brand">aperture<b>.</b></div>
-  <nav class="nav" style="background:transparent;padding:0"><span>Shop</span><span>Cameras</span><span>About</span></nav>
+  <nav class="nav" style="background:transparent;padding:0"><span>Shop</span><span>Sneakers</span><span>About</span></nav>
 </header>`;
 }
 
 function footerHtml(): string {
-  return `<footer class="footer">aperture · Camera &amp; Photo · Free 2-day shipping over $50 · 30-day returns · © 2026</footer>`;
+  return `<footer class="footer">aperture · Shoes &amp; Streetwear · Free 2-day shipping over $50 · 30-day returns · © 2026</footer>`;
 }
 
 function galleryHtml(): string {
@@ -239,10 +239,11 @@ function galleryHtml(): string {
 }
 
 export function renderStoreHtml(p: ProductRow): string {
-  const price = `$${Number(p.price).toFixed(2)}`;
+  const priceNum = Number(p.price);
+  const price = `$${priceNum.toFixed(2)}`;
   const stock = p.in_stock ? "In Stock" : "Out of Stock";
-  const comparePrice = Math.max(p.price + 1, Math.round(Number(p.price) / 0.9));
-  const savePct = Math.max(1, Math.round(((comparePrice - Number(p.price)) / comparePrice) * 100));
+  const comparePrice = Math.max(priceNum + 1, Math.round(priceNum / 0.9));
+  const savePct = Math.max(1, Math.round(((comparePrice - priceNum) / comparePrice) * 100));
   const compare = `$${comparePrice.toFixed(2)}`;
 
   const jsonLd =
@@ -268,7 +269,7 @@ export function renderStoreHtml(p: ProductRow): string {
   if (p.template === "A") {
     return `${head(p.name)}
 ${headerFull()}
-<div class="crumbs">Camera &amp; Photo › Mirrorless Cameras › <b>${p.name}</b></div>
+<div class="crumbs">Shoes › Men › Sneakers › <b>${p.name}</b></div>
 <main class="page">
   <div class="grid2">
     ${galleryHtml()}
@@ -280,11 +281,11 @@ ${headerFull()}
       <div class="money"><span class="price">${price}</span><span class="compare">${compare}</span><span class="save">Save ${savePct}%</span></div>
       <span class="stock${p.in_stock ? "" : " out"}">${stock}</span>
       <ul class="bullets">
-        <li><b>33 MP</b> full-frame back-illuminated CMOS sensor with 15 stops of dynamic range.</li>
-        <li>4K 60p 10-bit 4:2:2 video with S-Cinetone and 5-axis IBIS stabilization.</li>
-        <li><b>759-point</b> fast hybrid AF with real-time Eye Tracking for humans &amp; animals.</li>
-        <li>Vari-angle 3.0&quot; touchscreen · dual card slots · weather-sealed magnesium body.</li>
-        <li>Includes body, battery, charger, strap and 1-year warranty.</li>
+        <li>Classic &quot;Panda&quot; colorway — clean white leather with black Swoosh.</li>
+        <li>Padded high-top collar with cushioned foam insole for all-day comfort.</li>
+        <li>Perforated leather toe box keeps things breathable.</li>
+        <li>Solid rubber cupsole with pivot-circle traction.</li>
+        <li>Includes replacement laces, box and dust bag.</li>
       </ul>
       <button class="cta cta-yellow">Add to Cart</button>
       <button class="cta cta-orange">Buy Now</button>
@@ -303,7 +304,7 @@ ${headerMinimal()}
 <main class="center pricing-section">
   <div class="stars" style="justify-content:center">★★★★★ 4.8 · 1,247 ratings</div>
   <h1 class="title" style="font-size:26px">${p.name}</h1>
-  <p class="tagline">Full-frame mirrorless · 33 MP · 4K 60p</p>
+  <p class="tagline">Classic high-top · Leather upper · Panda colorway</p>
   <div class="money" style="justify-content:center;margin-top:14px">
     <span data-test="current-price" class="amount">${price}</span>
     <span class="compare">${compare}</span>
@@ -311,7 +312,7 @@ ${headerMinimal()}
   </div>
   <div class="meta" style="margin-top:6px"><span data-test="availability" class="avail" style="${p.in_stock ? "" : "color:#b12704"}">${stock}</span></div>
   <div class="specs">
-    <div>33 MP BSI CMOS</div><div>4K 60p 10-bit</div><div>5-axis IBIS</div><div>759-pt AF</div>
+    <div>Leather upper</div><div>Black Swoosh</div><div>Rubber outsole</div><div>Padded collar</div>
   </div>
   <button class="cta cta-yellow">Add to Cart</button>
   <button class="cta cta-orange">Buy Now</button>
@@ -325,30 +326,30 @@ ${footerHtml()}
   return `${head(p.name)}
 ${jsonLd}
 ${headerFull()}
-<div class="crumbs">Camera &amp; Photo › Mirrorless Cameras › <b>${p.name}</b></div>
+<div class="crumbs">Shoes › Men › Sneakers › <b>${p.name}</b></div>
 <main class="page">
   <div class="grid3">
     ${galleryHtml()}
     <div class="buybox">
       <h1 class="title">${p.name}</h1>
-      <div class="stars">★★★★★ <a href="#">4.8</a> · 1,247 ratings · 300+ bought in past month</div>
+      <div class="stars">★★★★★ <a href="#">4.8</a> · 1,247 ratings · 1,000+ bought in past month</div>
       <div class="divider"></div>
       <div class="money"><span class="display-price">${price}</span><span class="compare">${compare}</span><span class="save">Save ${savePct}%</span></div>
       <div class="meta" style="margin:6px 0"><span class="availability-badge pill ${p.in_stock ? "pill-green" : "pill-red"}">${stock}</span></div>
       <ul class="bullets">
-        <li>World's best-selling full-frame mirrorless line — now with 10-bit 4K 60p.</li>
-        <li>Real-time Tracking AF for photo &amp; video, with Eye AF for humans, animals and birds.</li>
-        <li>Dual CFexpress Type A + SD UHS-II slots · USB-C 10 Gbps · weather-sealed.</li>
-        <li>Compatible with the full Sony E-mount lens lineup.</li>
+        <li>The most-wanted colorway of the Dunk line — sells out in minutes.</li>
+        <li>Genuine leather upper with perforated toe box.</li>
+        <li>High-top silhouette with padded collar and cushioned insole.</li>
+        <li>Solid rubber outsole with classic pivot-circle traction.</li>
       </ul>
       <button class="cta cta-yellow">Add to Cart</button>
       <button class="cta cta-orange">Buy Now</button>
     </div>
     <aside class="rail">
       <h3>Frequently bought together</h3>
-      <div class="mini"><img src="${PRODUCT_IMAGES.gallery[2]}" alt="lens"><div><div class="n">Sony FE 24-70mm f/2.8 GM II Lens</div><div class="p">$2,298.00</div></div></div>
-      <div class="mini"><img src="${PRODUCT_IMAGES.gallery[1]}" alt="card"><div><div class="n">Sony 128GB CFexpress Type A Card</div><div class="p">$189.00</div></div></div>
-      <button class="cta cta-yellow">Buy all 3 · $3,386.00</button>
+      <div class="mini"><img src="${PRODUCT_IMAGES.gallery[2]}" alt="socks"><div><div class="n">Nike Elite Crew Socks (3-pack)</div><div class="p">$18.00</div></div></div>
+      <div class="mini"><img src="${PRODUCT_IMAGES.gallery[1]}" alt="shields"><div><div class="n">Sneaker Shields Inserts (2-pack)</div><div class="p">$9.00</div></div></div>
+      <button class="cta cta-yellow">Buy all 3 · $166.00</button>
       <div class="soldby"><b>Sold by</b> <a href="#">aperture</a> · 100% positive feedback<br>Free returns · 30 days<br>In stock — ships within 24 hours</div>
     </aside>
   </div>
@@ -356,20 +357,20 @@ ${headerFull()}
   <div class="panel">
     <h4>About this item</h4>
     <ul>
-      <li>33 MP full-frame BSI CMOS sensor — class-leading stills and 4K 60p 10-bit video in one body.</li>
-      <li>5-axis in-body image stabilization rated for up to 5.5 stops.</li>
-      <li>759-point phase-detection AF covers 94% of the frame; real-time Eye AF for humans, animals and birds.</li>
-      <li>Weather-sealed magnesium alloy body · vari-angle 3.0&quot; touchscreen · dual card slots.</li>
+      <li>The &quot;Panda&quot; Dunk — the colorway that turned a basketball icon into streetwear's most-wanted sneaker.</li>
+      <li>Genuine leather upper with perforated toe box for breathability.</li>
+      <li>High-top silhouette with padded collar, cushioned insole and pivot-circle traction.</li>
+      <li>Fits true to size; runs narrow — size up half a size for wide feet.</li>
     </ul>
     <h4>Specifications</h4>
     <table class="table">
-      <tr><td>Brand</td><td>Sony</td></tr>
-      <tr><td>Model</td><td>ILCE-7M4</td></tr>
-      <tr><td>Sensor</td><td>33 MP full-frame BSI CMOS</td></tr>
-      <tr><td>Video</td><td>4K 60p · 10-bit 4:2:2</td></tr>
-      <tr><td>Stabilization</td><td>5-axis IBIS (5.5 stops)</td></tr>
-      <tr><td>Autofocus</td><td>759-point hybrid phase/contrast</td></tr>
-      <tr><td>Weight</td><td>658 g (body only)</td></tr>
+      <tr><td>Brand</td><td>Nike</td></tr>
+      <tr><td>Style</td><td>DD1391-100</td></tr>
+      <tr><td>Colorway</td><td>White / Black &quot;Panda&quot;</td></tr>
+      <tr><td>Upper</td><td>Genuine leather</td></tr>
+      <tr><td>Midsole</td><td>EVA foam</td></tr>
+      <tr><td>Outsole</td><td>Solid rubber</td></tr>
+      <tr><td>Fit</td><td>True to size</td></tr>
     </table>
     <h4>Shipping &amp; Returns</h4>
     <ul>

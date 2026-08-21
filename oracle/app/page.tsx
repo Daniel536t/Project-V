@@ -28,7 +28,7 @@ export default function Home() {
   useEffect(() => {
     const load = async () => {
       try {
-        const r = await fetch("/api/products/sony-a7iv");
+        const r = await fetch("/api/products/nike-dunk-panda");
         setProduct(await r.json());
       } catch {
         /* ignore */

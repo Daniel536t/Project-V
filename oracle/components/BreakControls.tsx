@@ -27,7 +27,7 @@ export default function BreakControls({
   onClose: () => void;
   product: ProductState | null;
 }) {
-  const [price, setPrice] = useState(product?.price ?? 899);
+  const [price, setPrice] = useState(product?.price ?? 139);
   const [working, setWorking] = useState(false);
 
   if (!open || !product) return null;
@@ -107,8 +107,8 @@ export default function BreakControls({
             </div>
             <input
               type="range"
-              min={699}
-              max={999}
+              min={90}
+              max={220}
               step={1}
               value={price}
               onChange={(e) => setPrice(Number(e.target.value))}
@@ -117,8 +117,8 @@ export default function BreakControls({
               className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-white/[0.08] accent-sense-electric"
             />
             <div className="mt-1.5 flex justify-between font-mono text-[10px] text-sense-dim">
-              <span>$699</span>
-              <span>$999</span>
+              <span>$90</span>
+              <span>$220</span>
             </div>
           </div>
 

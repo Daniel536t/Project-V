@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { PRODUCT_IMAGES } from "@/lib/store-shared";
+import { PRODUCT_IMAGES, PRODUCT_NAME } from "@/lib/store-shared";
 
 interface ProductState {
   id: string;
@@ -16,11 +16,11 @@ interface ProductState {
 const ALL_IMAGES = [PRODUCT_IMAGES.main, ...PRODUCT_IMAGES.gallery];
 
 const BULLETS = [
-  "33 MP full-frame back-illuminated CMOS sensor with 15 stops of dynamic range.",
-  "4K 60p 10-bit 4:2:2 video with S-Cinetone and 5-axis IBIS stabilization.",
-  "759-point fast hybrid AF with real-time Eye Tracking for humans & animals.",
-  'Vari-angle 3.0" touchscreen · dual card slots · weather-sealed magnesium body.',
-  "Includes body, battery, charger, strap and 1-year warranty.",
+  "Classic \"Panda\" colorway — clean white leather with black Swoosh.",
+  "Padded high-top collar with cushioned foam insole for all-day comfort.",
+  "Perforated leather toe box keeps things breathable.",
+  "Solid rubber cupsole with pivot-circle traction.",
+  "Includes replacement laces, box and dust bag.",
 ];
 
 export default function StorePanel({ onOpenBreak }: { onOpenBreak: () => void }) {
@@ -29,7 +29,7 @@ export default function StorePanel({ onOpenBreak }: { onOpenBreak: () => void })
 
   const load = useCallback(async () => {
     try {
-      const r = await fetch("/api/products/sony-a7iv");
+      const r = await fetch("/api/products/nike-dunk-panda");
       setProduct(await r.json());
     } catch {
       /* ignore */
@@ -125,7 +125,7 @@ function StoreHeader() {
         <div className="hidden min-w-0 flex-1 items-center overflow-hidden rounded-md border-2 border-[#febd69] bg-white md:flex">
           <input
             readOnly
-            placeholder="Search cameras, lenses, accessories"
+            placeholder="Search sneakers, apparel, accessories"
             className="min-w-0 flex-1 px-3 py-1.5 text-[13px] text-[#0f1111] outline-none"
           />
           <span className="flex cursor-pointer items-center bg-[#febd69] px-4 text-[13px] font-semibold text-[#0f1111]">
@@ -141,7 +141,7 @@ function StoreHeader() {
         </div>
       </div>
       <nav className="flex flex-wrap gap-4 bg-[#232f3e] px-4 py-1.5 text-[12px] text-white/90">
-        {["All", "Cameras", "Lenses", "Accessories", "Deals"].map((l) => (
+        {["All", "Sneakers", "Apparel", "Accessories", "Deals"].map((l) => (
           <span key={l} className="cursor-pointer hover:text-white hover:underline">
             {l}
           </span>
@@ -154,7 +154,7 @@ function StoreHeader() {
 function StoreFooter() {
   return (
     <footer className="mt-6 bg-[#232f3e] px-4 py-3 text-center text-[11px] text-[#ccd5dd]">
-      aperture · Camera &amp; Photo · Free 2-day shipping over $50 · 30-day returns · © 2026
+      aperture · Shoes &amp; Streetwear · Free 2-day shipping over $50 · 30-day returns · © 2026
     </footer>
   );
 }
@@ -162,7 +162,7 @@ function StoreFooter() {
 function Breadcrumbs({ name }: { name: string }) {
   return (
     <div className="text-[12px] text-[#565959]">
-      Camera &amp; Photo › Mirrorless Cameras ›{" "}
+      Shoes › Men › Sneakers ›{" "}
       <span className="font-medium text-[#0f1111]">{name}</span>
     </div>
   );
@@ -269,11 +269,11 @@ function TemplateA({
       transition={{ duration: 0.25, ease: "easeOut" }}
       className="mx-auto max-w-6xl px-4 py-4"
     >
-      <Breadcrumbs name="Sony A7 IV (Body Only)" />
+      <Breadcrumbs name={PRODUCT_NAME} />
       <div className="mt-3 grid gap-6 rounded-lg border border-[#e7e9ec] bg-white p-5 md:grid-cols-[5fr_6fr]">
         <Gallery />
         <div className="product-container">
-          <h1 className="text-[21px] font-normal leading-snug">Sony A7 IV (Body Only)</h1>
+          <h1 className="text-[21px] font-normal leading-snug">{PRODUCT_NAME}</h1>
           <Stars />
           <div className="mt-1 text-[12px] text-[#565959]">
             Ships from and sold by <span className="text-[#007185]">aperture</span>.
@@ -356,8 +356,8 @@ function TemplateB({
       </div>
       <div className="pricing-section mx-auto max-w-xl px-6 pb-10 pt-6 text-center">
         <Stars centered />
-        <h1 className="mt-1 text-[24px] font-normal leading-snug">Sony A7 IV (Body Only)</h1>
-        <p className="text-[13px] text-[#565959]">Full-frame mirrorless · 33 MP · 4K 60p</p>
+        <h1 className="mt-1 text-[24px] font-normal leading-snug">{PRODUCT_NAME}</h1>
+        <p className="text-[13px] text-[#565959]">Classic high-top · Leather upper · Panda colorway</p>
         <div className="mt-4 flex flex-wrap items-baseline justify-center gap-2.5">
           <span data-test="current-price" className="text-[34px] font-bold">
             {price}
@@ -374,7 +374,7 @@ function TemplateB({
           </span>
         </div>
         <div className="mt-5 grid grid-cols-2 gap-2 text-left">
-          {["33 MP BSI CMOS", "4K 60p 10-bit", "5-axis IBIS", "759-pt AF"].map((s) => (
+          {["Leather upper", "Black Swoosh", "Rubber outsole", "Padded collar"].map((s) => (
             <div
               key={s}
               className="rounded-lg border border-[#e7e9ec] bg-[#f7f7f7] px-3 py-2.5 text-[13px] transition hover:border-[#d5d9d9]"
@@ -433,7 +433,7 @@ function TemplateC({
           __html: JSON.stringify({
             "@context": "https://schema.org",
             "@type": "Product",
-            name: "Sony A7 IV (Body Only)",
+            name: PRODUCT_NAME,
             image: PRODUCT_IMAGES.main,
             offers: {
               "@type": "Offer",
@@ -444,13 +444,13 @@ function TemplateC({
           }),
         }}
       />
-      <Breadcrumbs name="Sony A7 IV (Body Only)" />
+      <Breadcrumbs name={PRODUCT_NAME} />
       <div className="mt-3 grid gap-5 rounded-lg border border-[#e7e9ec] bg-white p-5 lg:grid-cols-[5fr_6fr_3fr]">
         <Gallery />
         <div className="buybox">
-          <h1 className="text-[21px] font-normal leading-snug">Sony A7 IV (Body Only)</h1>
+          <h1 className="text-[21px] font-normal leading-snug">{PRODUCT_NAME}</h1>
           <Stars />
-          <div className="text-[12px] text-[#565959]">300+ bought in past month</div>
+          <div className="text-[12px] text-[#565959]">1,000+ bought in past month</div>
           <div className="my-2.5 border-b border-[#e7e9ec]" />
           <div className="flex flex-wrap items-baseline gap-2.5">
             <span className="display-price text-[26px] font-semibold">{price}</span>
@@ -482,28 +482,28 @@ function TemplateC({
             <div className="flex items-center gap-2.5">
               <img
                 src={PRODUCT_IMAGES.gallery[2]}
-                alt="lens"
+                alt="socks"
                 className="h-11 w-11 rounded border border-[#e7e9ec] object-cover"
               />
               <div>
-                <div className="text-[12px] leading-tight">Sony FE 24-70mm f/2.8 GM II Lens</div>
-                <div className="mt-0.5 text-[12px] font-semibold">$2,298.00</div>
+                <div className="text-[12px] leading-tight">Nike Elite Crew Socks (3-pack)</div>
+                <div className="mt-0.5 text-[12px] font-semibold">$18.00</div>
               </div>
             </div>
             <div className="flex items-center gap-2.5">
               <img
                 src={PRODUCT_IMAGES.gallery[1]}
-                alt="card"
+                alt="shields"
                 className="h-11 w-11 rounded border border-[#e7e9ec] object-cover"
               />
               <div>
-                <div className="text-[12px] leading-tight">Sony 128GB CFexpress Type A Card</div>
-                <div className="mt-0.5 text-[12px] font-semibold">$189.00</div>
+                <div className="text-[12px] leading-tight">Sneaker Shields Inserts (2-pack)</div>
+                <div className="mt-0.5 text-[12px] font-semibold">$9.00</div>
               </div>
             </div>
           </div>
           <button className="sense-press mt-3 w-full rounded-full border border-[#fcd200] bg-[#ffd814] px-4 py-2 text-[13px] font-semibold text-[#0f1111] transition hover:bg-[#f7ca00]">
-            Buy all 3 · $3,386.00
+            Buy all 3 · $166.00
           </button>
           <div className="mt-3 text-[12px] leading-relaxed text-[#565959]">
             <b className="text-[#0f1111]">Sold by</b> aperture · 100% positive feedback
@@ -537,28 +537,27 @@ function TemplateC({
             <h4 className="mb-1 text-[13.5px] font-semibold">About this item</h4>
             <ul className="list-disc space-y-1 pl-5">
               <li>
-                33 MP full-frame BSI CMOS sensor — class-leading stills and 4K 60p 10-bit video in
-                one body.
+                The &quot;Panda&quot; Dunk — the colorway that turned a basketball icon into
+                streetwear&apos;s most-wanted sneaker.
               </li>
-              <li>5-axis in-body image stabilization rated for up to 5.5 stops.</li>
+              <li>Genuine leather upper with perforated toe box for breathability.</li>
               <li>
-                759-point phase-detection AF covers 94% of the frame; real-time Eye AF for humans,
-                animals and birds.
+                High-top silhouette with padded collar, cushioned insole and pivot-circle traction.
               </li>
-              <li>Weather-sealed magnesium alloy body · vari-angle touchscreen · dual card slots.</li>
+              <li>Fits true to size; runs narrow — size up half a size for wide feet.</li>
             </ul>
           </>
         )}
         {tab === 1 && (
           <table className="w-full border-collapse text-[12.5px]">
             {[
-              ["Brand", "Sony"],
-              ["Model", "ILCE-7M4"],
-              ["Sensor", "33 MP full-frame BSI CMOS"],
-              ["Video", "4K 60p · 10-bit 4:2:2"],
-              ["Stabilization", "5-axis IBIS (5.5 stops)"],
-              ["Autofocus", "759-point hybrid phase/contrast"],
-              ["Weight", "658 g (body only)"],
+              ["Brand", "Nike"],
+              ["Style", "DD1391-100"],
+              ["Colorway", "White / Black \"Panda\""],
+              ["Upper", "Genuine leather"],
+              ["Midsole", "EVA foam"],
+              ["Outsole", "Solid rubber"],
+              ["Fit", "True to size"],
             ].map(([k, v]) => (
               <tr key={k}>
                 <td className="w-[38%] border-b border-[#e7e9ec] py-1.5 pr-2 text-[#565959]">{k}</td>

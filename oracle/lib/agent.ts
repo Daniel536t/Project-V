@@ -31,10 +31,10 @@ export function parseIntentDeterministic(msg: string): ParsedIntent | null {
 
   if (field === "stock") {
     const condition = /(out of|sold out|gone|unavailable)/i.test(m) ? "out_of_stock" : "in_stock";
-    return { product_name: "Sony A7IV", target_price: null, condition, field };
+    return { product_name: "Nike Dunk Low 'Panda'", target_price: null, condition, field };
   }
 
-  // price: "drops below $800" → target 800, condition "<"
+  // price: "drops below $120" → target 120, condition "<"
   const explicit = m.match(
     /(?:under|below|less than|over|above|more than|drops?\s+to|hits?|at|==)\s*\$?\s*(\d+(?:\.\d+)?)/i,
   );
@@ -51,7 +51,7 @@ export function parseIntentDeterministic(msg: string): ParsedIntent | null {
   }
 
   if (target == null) return null;
-  return { product_name: "Sony A7IV", target_price: target, condition, field };
+  return { product_name: "Nike Dunk Low 'Panda'", target_price: target, condition, field };
 }
 
 // ---- NIM structured-JSON parser ----
@@ -60,7 +60,7 @@ function nimSystemPrompt(): string {
   return (
     "Extract a watch request from the user message into JSON with exactly these keys:\n" +
     '{"product_name": string, "target_price": number|null, "condition": string, "field": "price"|"stock"}\n' +
-    '- product_name: the product being watched (e.g. "Sony A7IV").\n' +
+    '- product_name: the product being watched (e.g. "Nike Dunk Low \'Panda\'").\n' +
     '- target_price: the numeric threshold, or null for stock watches.\n' +
     '- condition: one of "<", "<=", ">", ">=", "==", "in_stock", "out_of_stock".\n' +
     '- field: "price" if it is a price threshold, "stock" if it is about availability.\n' +
@@ -88,7 +88,7 @@ export async function parseIntentNim(msg: string): Promise<ParsedIntent | null> 
     const condition = String(obj.condition ?? "<");
     const field = obj.field === "stock" ? "stock" : "price";
     return {
-      product_name: obj.product_name ?? "Sony A7IV",
+      product_name: obj.product_name ?? "Nike Dunk Low 'Panda'",
       target_price: obj.target_price ?? null,
       condition,
       field,
@@ -143,7 +143,7 @@ export async function handleAgentMessage(msg: string): Promise<AgentReply> {
     if (!target) {
       return {
         action: "check",
-        message: "I'm not watching anything yet — try \"Watch the Sony A7IV and alert me when it drops below $800\".",
+        message: "I'm not watching anything yet — try \"Watch the Nike Dunk Low 'Panda' and alert me when it drops below $120\".",
         watches,
       };
     }
@@ -171,7 +171,7 @@ export async function handleAgentMessage(msg: string): Promise<AgentReply> {
   if (!parsed) {
     return {
       action: "unknown",
-      message: "I watch pages and alert you on change. Try: \"Watch the Sony A7IV and alert me when it drops below $800\".",
+      message: "I watch pages and alert you on change. Try: \"Watch the Nike Dunk Low 'Panda' and alert me when it drops below $120\".",
       watches,
     };
   }
@@ -200,7 +200,7 @@ export async function handleAgentMessage(msg: string): Promise<AgentReply> {
         : "the moment it's back in stock"
       : `the moment the price drops below $${target}`;
 
-  // run.value already carries its natural form ("$899" or "In Stock").
+  // run.value already carries its natural form ("$139" or "In Stock").
   const current = run.value;
 
   let message = `Watching ${parsed.product_name}.`;

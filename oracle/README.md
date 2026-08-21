@@ -2,15 +2,15 @@
 
 **WeMakeDevs "Into the Scrape-Verse" hackathon · Bright Data Scraper Studio**
 
-SENSE watches a page for a user-defined condition ("alert me when this drops below $800") and pings the moment it's met. When the target site redesigns, SENSE detects the break, heals its own scraper from the original plain-English intent, and keeps watching — same Collector ID, zero gaps. Every heal leaves a visible **scar**.
+SENSE watches a page for a user-defined condition ("alert me when this drops below $120") and pings the moment it's met. When the target site redesigns, SENSE detects the break, heals its own scraper from the original plain-English intent, and keeps watching — same Collector ID, zero gaps. Every heal leaves a visible **scar**.
 
 The demo is a single screen, split in two:
 
 - **LEFT — SENSE**: an AI chat. You tell it what to watch; it confirms with the live price.
-- **RIGHT — STORE**: a premium product page for the Sony A7IV. A floating **"⚙ Break This Site"** button opens demo controls: redesign the page, move the price, toggle stock, toggle bot detection.
+- **RIGHT — STORE**: a premium product page for the Nike Dunk Low "Panda". A floating **"⚙ Break This Site"** button opens demo controls: redesign the page, move the price, toggle stock, toggle bot detection.
 - **BOTTOM — TERMINAL**: the live collector log — every scrape, break, heal, and alert streams here via SSE.
 
-**The rule above all rules: no simulations.** The store's price lives in a real `products` table in PostgreSQL. The store UI fetches it from `/api/products/sony-a7iv` and subscribes to `/api/store/stream` (SSE). The scraper fetches the store's rendered HTML (`/api/store/html`) and extracts the price with a real CSS selector. When the price changes in the popup, the database changes, the store UI updates, and the next real scrape returns the new price.
+**The rule above all rules: no simulations.** The store's price lives in a real `products` table in PostgreSQL. The store UI fetches it from `/api/products/nike-dunk-panda` and subscribes to `/api/store/stream` (SSE). The scraper fetches the store's rendered HTML (`/api/store/html`) and extracts the price with a real CSS selector. When the price changes in the popup, the database changes, the store UI updates, and the next real scrape returns the new price.
 
 ---
 
@@ -63,9 +63,9 @@ collector is what the store's page would be scraped by in production.
 ## The 90-second demo script
 
 1. **In SENSE chat, type:**
-   `Watch the Sony A7IV and alert me when it drops below $800`
+   `Watch the Nike Dunk Low 'Panda' and alert me when it drops below $120`
    → SENSE parses intent (NVIDIA NIM), creates a watch with a real collector ID
-   (`c_…` visible on the card), runs the first real scrape: **"Currently $899."**
+   (`c_…` visible on the card), runs the first real scrape: **"Currently $139."**
 
 2. **Click ⚙ Break This Site → Redesign.**
    The store's DOM completely changes (template A→B). The watch's selector no
@@ -74,9 +74,9 @@ collector is what the store's page would be scraped by in production.
    → `✅ Healed · price now at .pricing-section [data-test='current-price']`
    → `Scar #1 · zero downtime downstream`. Status: **Healed**, scar count 1.
 
-3. **Drag the price slider to $799.**
-   The store UI updates live (SSE). The next scrape returns $799.
-   `CONDITION MET: $799 < 800 → alert dispatched`. The chat fires the alert
+3. **Drag the price slider to $119.**
+   The store UI updates live (SSE). The next scrape returns $119.
+   `CONDITION MET: $119 < 120 → alert dispatched`. The chat fires the alert
    with the signature **tingle** (fast red shiver) — the one animation reserved
    for alerts.
 
@@ -114,7 +114,7 @@ A judge can do all of it unaided — every control is on screen.
 - `GET /api/watches/stream` — SSE alert stream
 - `GET /api/store/stream` — SSE store state stream
 - `POST /api/store/admin` — redesign | set_price | set_stock | set_bot_detection
-- `GET /api/products/sony-a7iv` — store state (JSON)
+- `GET /api/products/nike-dunk-panda` — store state (JSON)
 - `GET /api/store/html` — store HTML representation (scrape target)
 - `GET /api/ledger` — the Scar Log
 

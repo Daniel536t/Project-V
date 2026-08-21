@@ -31,7 +31,7 @@ interface AlertPayload {
   target: string | null;
 }
 
-const SUGGESTED = "Watch the Sony A7IV and alert me when it drops below $800";
+const SUGGESTED = "Watch the Nike Dunk Low 'Panda' and alert me when it drops below $120";
 
 function StatusChip({ status }: { status: string }) {
   const map: Record<string, { label: string; cls: string }> = {
@@ -264,7 +264,7 @@ export default function SenseChat({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && submit()}
-            placeholder="Watch something… e.g. 'Alert me when the A7IV drops below $800'"
+            placeholder="Watch something… e.g. 'Alert me when the Dunk drops below $120'"
             className="min-w-0 flex-1 bg-transparent text-[14px] text-sense-text placeholder:text-sense-dim focus:outline-none"
           />
           <button

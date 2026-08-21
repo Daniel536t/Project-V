@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS products (
 );
 
 INSERT INTO products (id, name, price, in_stock, template, bot_detection)
-VALUES ('sony-a7iv', 'Sony A7IV (Body Only)', 899, true, 'A', false)
+VALUES ('nike-dunk-panda', 'Nike Dunk Low ''Panda''', 139, true, 'A', false)
 ON CONFLICT (id) DO NOTHING;
 
 -- Scrape history (one row per real scrape per watch)
