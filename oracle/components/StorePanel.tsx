@@ -211,17 +211,15 @@ export default function StorePanel({
         <StoreFooter />
       </div>
 
-      {/* Floating break button (product view only) */}
-      {view === "product" && (
-        <div className="pointer-events-none absolute bottom-16 right-6 z-20">
-          <button
-            onClick={onOpenBreak}
-            className="sense-press pointer-events-auto flex items-center gap-2 rounded-full border border-[#ff2d55]/50 bg-[#1d1d1f]/95 px-4 py-2.5 font-mono text-[12px] font-medium text-white shadow-lg backdrop-blur transition hover:border-[#ff2d55]"
-          >
-            ⚙ Break This Site
-          </button>
-        </div>
-      )}
+      {/* Floating break button — always accessible on the store side */}
+      <div className="pointer-events-none absolute bottom-16 right-6 z-20">
+        <button
+          onClick={onOpenBreak}
+          className="sense-press pointer-events-auto flex items-center gap-2 rounded-full border border-[#ff2d55]/50 bg-[#1d1d1f]/95 px-4 py-2.5 font-mono text-[12px] font-medium text-white shadow-lg backdrop-blur transition hover:border-[#ff2d55]"
+        >
+          ⚙ Break This Site
+        </button>
+      </div>
     </div>
   );
 }
@@ -291,7 +289,7 @@ function Storefront({
 
   const scrollToFeatured = () => {
     const card =
-      featuredRef.current?.querySelector('[data-featured-id="iphone-15-pro"]') ??
+      featuredRef.current?.querySelector('[data-featured-id="iphone-17-pro"]') ??
       featuredRef.current;
     card?.scrollIntoView({ behavior: "smooth", block: "center" });
     setHighlight(true);
@@ -347,22 +345,12 @@ function Storefront({
             </div>
           </div>
 
-          {/* Product cluster */}
-          <div className="absolute inset-y-0 right-0 w-[58%]">
+          {/* Single iPhone hero — the product stands out on its own */}
+          <div className="absolute inset-y-0 right-0 hidden w-[54%] items-center justify-center pr-8 sm:flex">
             <img
               src={HERO_IMAGES.phone}
-              alt="iPhone"
-              className="absolute right-[38%] top-1/2 h-[82%] w-auto -translate-y-1/2 rotate-[4deg] rounded-[22px] object-contain shadow-[0_18px_40px_-12px_rgba(0,0,0,0.35)]"
-            />
-            <img
-              src={HERO_IMAGES.buds}
-              alt="AirPods"
-              className="absolute bottom-[6%] right-[52%] h-[34%] w-auto rounded-[16px] object-contain shadow-[0_10px_24px_-8px_rgba(0,0,0,0.3)]"
-            />
-            <img
-              src={HERO_IMAGES.watch}
-              alt="Apple Watch"
-              className="absolute bottom-[8%] right-[6%] h-[40%] w-auto rounded-[16px] object-contain shadow-[0_12px_26px_-8px_rgba(0,0,0,0.35)]"
+              alt="iPhone 17 Pro"
+              className="max-h-[92%] w-auto rounded-[26px] object-contain drop-shadow-[0_28px_60px_-12px_rgba(0,0,0,0.4)]"
             />
           </div>
         </div>
@@ -426,11 +414,11 @@ function Storefront({
                     <span className="h-1 w-1 rounded-full bg-[#00d4ff]" /> SENSE
                   </span>
                 )}
-                <div className="flex h-[110px] items-center justify-center overflow-hidden rounded-[8px] bg-[#fafafa]">
+                <div className="flex h-[110px] items-center justify-center overflow-hidden rounded-[8px] bg-[#fafafa] p-2">
                   <img
                     src={p.image}
                     alt={p.name}
-                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.05]"
+                    className="max-h-full max-w-full object-contain transition-transform duration-300 group-hover:scale-[1.05]"
                   />
                 </div>
                 <div className="mt-2 truncate text-[11px] font-semibold text-[#1d1d1f]">

@@ -221,8 +221,8 @@ export default function SenseChat({
   }
 
   function quickCard(i: number) {
-    if (i === 0) submit("Watch the iPhone 15 Pro and alert me when it drops below $949");
-    else if (i === 1) submit("Notify me when the iPhone 15 Pro is back in stock");
+    if (i === 0) submit("Watch the iPhone 17 Pro and alert me when it drops below $949");
+    else if (i === 1) submit("Notify me when the iPhone 17 Pro is back in stock");
     else if (i === 2) submit("What am I watching?");
     else onOpenScars();
   }
@@ -571,7 +571,7 @@ export default function SenseChat({
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && submit()}
-              placeholder="Message SENSE… e.g. 'Alert me when the iPhone drops below $949'"
+              placeholder="Message SENSE… e.g. 'Alert me when the iPhone 17 drops below $949'"
               className="min-w-0 flex-1 bg-transparent text-[13px] text-[#1d1d1f] placeholder:text-[#8e8e93] focus:outline-none"
             />
             <button

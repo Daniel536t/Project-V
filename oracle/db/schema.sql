@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS products (
 );
 
 INSERT INTO products (id, name, price, in_stock, template, bot_detection, stock_level)
-VALUES ('iphone-15-pro', 'iPhone 15 Pro', 999, true, 'A', false, 3)
+VALUES ('iphone-17-pro', 'iPhone 17 Pro', 999, true, 'A', false, 3)
 ON CONFLICT (id) DO NOTHING;
 
 -- Scrape history (one row per real scrape per watch)

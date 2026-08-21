@@ -63,7 +63,7 @@ collector is what the store's page would be scraped by in production.
 ## The 90-second demo script
 
 1. **In SENSE chat, type:**
-   `Watch the iPhone 15 Pro and alert me when it drops below $949`
+   `Watch the iPhone 17 Pro and alert me when it drops below $949`
    → SENSE parses intent (NVIDIA NIM), creates a watch with a real collector ID
    (`c_…` visible on the card), runs the first real scrape: **"Currently $999."**
 

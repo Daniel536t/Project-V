@@ -41,7 +41,7 @@ export default function Home() {
     <div className="relative h-screen w-screen overflow-hidden bg-white font-sans text-[#1d1d1f]">
       <div className="flex h-full">
         {/* LEFT — SENSE (46.4%) */}
-        <div className="w-[46.4%] min-w-0 border-r border-[#e7e7e9]">
+        <div className="w-[46.4%] min-w-0 border-r border-black">
           <SenseChat
             onOpenScars={() => setShowScars(true)}
             onWatchCreated={() => setWatchSignal((v) => v + 1)}
