@@ -239,9 +239,12 @@ function Storefront({
   const [highlight, setHighlight] = useState(false);
 
   const scrollToFeatured = () => {
-    featuredRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const card =
+      featuredRef.current?.querySelector('[data-featured-id="iphone-15-pro"]') ??
+      featuredRef.current;
+    card?.scrollIntoView({ behavior: "smooth", block: "center" });
     setHighlight(true);
-    setTimeout(() => setHighlight(false), 1600);
+    window.setTimeout(() => setHighlight(false), 2000);
   };
 
   return (
@@ -330,10 +333,11 @@ function Storefront({
             return (
               <div
                 key={p.id}
+                data-featured-id={p.id}
                 onClick={() => onWatch(p.id)}
-                className={`group relative cursor-pointer rounded-[12px] border bg-white p-3 text-left transition hover:shadow-md ${
+                className={`group relative cursor-pointer rounded-[12px] border bg-white p-3 text-left transition duration-300 hover:shadow-md ${
                   highlight && i === 0
-                    ? "border-[#0071e3] ring-2 ring-[#0071e3] ring-offset-2"
+                    ? "scale-[1.05] border-[#0071e3] ring-2 ring-[#0071e3] ring-offset-2 shadow-[0_12px_30px_-8px_rgba(0,113,227,0.35)]"
                     : "border-[#e4e4e6]"
                 }`}
               >
