@@ -1,67 +1,25 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import SenseChat from "@/components/SenseChat";
-import StorePanel from "@/components/StorePanel";
-import TerminalStrip from "@/components/TerminalStrip";
-import BreakControls from "@/components/BreakControls";
-import ScarLog from "@/components/ScarLog";
-
-interface ProductState {
-  id: string;
-  name: string;
-  price: number;
-  in_stock: boolean;
-  template: string;
-  bot_detection: boolean;
-  stock_level: number;
-}
+import Sidebar from '@/components/sense/Sidebar';
+import ChatPanel from '@/components/sense/ChatPanel';
+import StorePanel from '@/components/store/StorePanel';
+import TerminalStrip from '@/components/terminal/TerminalStrip';
 
 export default function Home() {
-  const [showBreak, setShowBreak] = useState(false);
-  const [showScars, setShowScars] = useState(false);
-  const [product, setProduct] = useState<ProductState | null>(null);
-  const [watchSignal, setWatchSignal] = useState(0);
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const r = await fetch("/api/products/active");
-        setProduct(await r.json());
-      } catch {
-        /* ignore */
-      }
-    };
-    load();
-    const t = setInterval(load, 6000);
-    return () => clearInterval(t);
-  }, []);
-
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-white font-sans text-[#1d1d1f]">
-      <div className="flex h-full">
-        {/* LEFT — SENSE (46.4%) */}
-        <div className="w-[46.4%] min-w-0 border-r border-black">
-          <SenseChat
-            onOpenScars={() => setShowScars(true)}
-            onWatchCreated={() => setWatchSignal((v) => v + 1)}
-          />
-        </div>
+    <main className="h-screen w-screen flex overflow-hidden bg-white">
+      {/* LEFT — SENSE (46%) */}
+      <section className="w-[46%] min-w-[580px] flex shrink-0">
+        <Sidebar />
+        <ChatPanel />
+      </section>
 
-        {/* RIGHT — STORE (53.6%) + terminal strip */}
-        <div className="relative min-w-0 flex-1">
-          <StorePanel onOpenBreak={() => setShowBreak(true)} watchSignal={watchSignal} />
-          <TerminalStrip />
-        </div>
-      </div>
+      {/* THE BLACK LINE — exact, 8px, full height, pure black */}
+      <div className="w-[8px] bg-black shrink-0" aria-hidden />
 
-      {/* ── Demo controls ── */}
-      <BreakControls
-        open={showBreak}
-        onClose={() => setShowBreak(false)}
-        product={product}
-      />
-      <ScarLog open={showScars} onClose={() => setShowScars(false)} />
-    </div>
+      {/* RIGHT — STORE + TERMINAL (fills rest) */}
+      <section className="flex-1 flex flex-col min-w-0 relative">
+        <StorePanel />
+        <TerminalStrip />
+      </section>
+    </main>
   );
 }
