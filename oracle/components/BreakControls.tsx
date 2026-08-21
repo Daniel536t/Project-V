@@ -28,7 +28,7 @@ export default function BreakControls({
   onClose: () => void;
   product: ProductState | null;
 }) {
-  const [price, setPrice] = useState(product?.price ?? 139);
+  const [price, setPrice] = useState(product?.price ?? 999);
   const [working, setWorking] = useState(false);
 
   if (!open || !product) return null;
@@ -55,7 +55,7 @@ export default function BreakControls({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.15 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -64,20 +64,18 @@ export default function BreakControls({
         initial={{ scale: 0.95, opacity: 0, y: 8 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
         transition={{ type: "spring", stiffness: 380, damping: 30 }}
-        className="w-full max-w-sm rounded-2xl border border-white/[0.1] bg-sense-dark p-6 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.9)]"
+        className="w-full max-w-sm rounded-[20px] border border-[#e8e8ed] bg-white p-6 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.4)]"
       >
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <h2 className="font-mono text-sm font-semibold text-sense-text">
-              ⚙ Break This Site
-            </h2>
-            <p className="mt-1 font-mono text-[11px] text-sense-dim">
+            <h2 className="text-[15px] font-semibold text-[#1d1d1f]">⚙ Break This Site</h2>
+            <p className="mt-0.5 text-[11px] text-[#8e8e93]">
               {TEMPLATE_LABEL[product.template] ?? "Classic"} template · ${product.price}
             </p>
           </div>
           <button
             onClick={onClose}
-            className="sense-press flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.06] font-mono text-sm text-sense-dim transition hover:border-white/[0.15] hover:text-sense-text"
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-[#e8e8ed] text-[14px] text-[#6e6e73] transition hover:border-[#d2d2d7] hover:text-[#1d1d1f]"
           >
             ✕
           </button>
@@ -86,13 +84,13 @@ export default function BreakControls({
         <div className="space-y-6">
           {/* Redesign */}
           <div>
-            <div className="mb-2 font-mono text-[11px] uppercase tracking-[0.12em] text-sense-dim">
+            <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.1em] text-[#8e8e93]">
               Redesign Site
             </div>
             <button
               onClick={() => post("redesign")}
               disabled={working}
-              className="sense-press w-full rounded-xl border border-sense-danger/40 bg-sense-danger/[0.07] px-4 py-3 font-mono text-[13px] text-sense-danger transition hover:border-sense-danger/70 hover:bg-sense-danger/[0.12] disabled:opacity-50"
+              className="w-full rounded-[12px] border border-[#ff2d55]/40 bg-[#ff2d55]/[0.06] px-4 py-3 text-[13px] font-medium text-[#d90429] transition hover:border-[#ff2d55]/70 hover:bg-[#ff2d55]/[0.1] disabled:opacity-50"
             >
               Switch to {TEMPLATE_LABEL[product.template === "A" ? "B" : product.template === "B" ? "C" : "A"]}
             </button>
@@ -100,39 +98,39 @@ export default function BreakControls({
 
           {/* Price slider */}
           <div>
-            <div className="mb-2 flex items-center justify-between font-mono text-[11px]">
-              <span className="uppercase tracking-[0.12em] text-sense-dim">Price</span>
-              <span className="rounded-md bg-white/[0.04] px-2 py-0.5 font-mono text-[13px] font-semibold text-sense-electric">
+            <div className="mb-2 flex items-center justify-between text-[11px]">
+              <span className="font-medium uppercase tracking-[0.1em] text-[#8e8e93]">Price</span>
+              <span className="rounded-[8px] bg-[#f5f5f7] px-2 py-0.5 font-mono text-[13px] font-semibold text-[#0071e3]">
                 ${price}
               </span>
             </div>
             <input
               type="range"
-              min={90}
-              max={220}
-              step={1}
+              min={799}
+              max={1299}
+              step={10}
               value={price}
               onChange={(e) => setPrice(Number(e.target.value))}
               onMouseUp={() => post("set_price", price)}
               onTouchEnd={() => post("set_price", price)}
-              className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-white/[0.08] accent-sense-electric"
+              className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[#e0e0e5] accent-[#0071e3]"
             />
-            <div className="mt-1.5 flex justify-between font-mono text-[10px] text-sense-dim">
-              <span>$90</span>
-              <span>$220</span>
+            <div className="mt-1.5 flex justify-between font-mono text-[10px] text-[#b0b0b5]">
+              <span>$799</span>
+              <span>$1,299</span>
             </div>
           </div>
 
           {/* Stock toggle */}
           <div className="flex items-center justify-between">
-            <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-sense-dim">
+            <span className="text-[11px] font-medium uppercase tracking-[0.1em] text-[#8e8e93]">
               Out of Stock
             </span>
             <button
               onClick={() => post("set_stock", !product.in_stock)}
               disabled={working}
               className={`relative h-6 w-11 rounded-full transition disabled:opacity-50 ${
-                !product.in_stock ? "bg-sense-danger/70" : "bg-white/[0.08]"
+                !product.in_stock ? "bg-[#ff2d55]" : "bg-[#e0e0e5]"
               }`}
             >
               <span
@@ -145,26 +143,24 @@ export default function BreakControls({
 
           {/* Stock level */}
           <div className="flex items-center justify-between">
-            <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-sense-dim">
+            <span className="text-[11px] font-medium uppercase tracking-[0.1em] text-[#8e8e93]">
               Stock Level
             </span>
             <div className="flex items-center gap-2">
               <button
-                onClick={() =>
-                  post("set_stock_level", Math.max(0, (product.stock_level ?? 3) - 1))
-                }
+                onClick={() => post("set_stock_level", Math.max(0, (product.stock_level ?? 3) - 1))}
                 disabled={working}
-                className="sense-press h-7 w-7 rounded-lg border border-white/[0.08] font-mono text-sm text-sense-text transition hover:border-white/[0.2] disabled:opacity-50"
+                className="h-7 w-7 rounded-[8px] border border-[#e8e8ed] text-[15px] text-[#1d1d1f] transition hover:border-[#d2d2d7] disabled:opacity-50"
               >
                 −
               </button>
-              <span className="w-6 text-center font-mono text-[13px] font-semibold text-sense-electric">
+              <span className="w-6 text-center font-mono text-[13px] font-semibold text-[#0071e3]">
                 {product.stock_level ?? 3}
               </span>
               <button
                 onClick={() => post("set_stock_level", (product.stock_level ?? 3) + 1)}
                 disabled={working}
-                className="sense-press h-7 w-7 rounded-lg border border-white/[0.08] font-mono text-sm text-sense-text transition hover:border-white/[0.2] disabled:opacity-50"
+                className="h-7 w-7 rounded-[8px] border border-[#e8e8ed] text-[15px] text-[#1d1d1f] transition hover:border-[#d2d2d7] disabled:opacity-50"
               >
                 +
               </button>
@@ -173,14 +169,14 @@ export default function BreakControls({
 
           {/* Bot detection */}
           <div className="flex items-center justify-between">
-            <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-sense-dim">
+            <span className="text-[11px] font-medium uppercase tracking-[0.1em] text-[#8e8e93]">
               Bot Detection
             </span>
             <button
               onClick={() => post("set_bot_detection", !product.bot_detection)}
               disabled={working}
               className={`relative h-6 w-11 rounded-full transition disabled:opacity-50 ${
-                product.bot_detection ? "bg-sense-warning/70" : "bg-white/[0.08]"
+                product.bot_detection ? "bg-[#f5a623]" : "bg-[#e0e0e5]"
               }`}
             >
               <span
@@ -192,7 +188,7 @@ export default function BreakControls({
           </div>
         </div>
 
-        <p className="mt-6 border-t border-white/[0.05] pt-4 font-mono text-[10px] leading-relaxed text-sense-dim">
+        <p className="mt-6 border-t border-[#f0f0f2] pt-4 text-[11px] leading-relaxed text-[#8e8e93]">
           Everything here is real. The scraper sees what you see.
         </p>
       </motion.div>

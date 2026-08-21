@@ -10,17 +10,10 @@ interface LogEvent {
 }
 
 const LEVEL_COLOR: Record<LogEvent["level"], string> = {
-  info: "#00d4ff",
-  success: "#00ff88",
-  warn: "#ffaa00",
-  error: "#ff2d55",
-};
-
-const LEVEL_ICON: Record<LogEvent["level"], string> = {
-  info: "·",
-  success: "✓",
-  warn: "!",
-  error: "✕",
+  info: "#57d7ff",
+  success: "#43d17a",
+  warn: "#e9d85b",
+  error: "#ff5f57",
 };
 
 function stamp(ts: number): string {
@@ -58,36 +51,42 @@ export default function TerminalStrip() {
     <div
       className={`absolute inset-x-0 bottom-0 z-10 transition-all duration-300 ease-out ${
         expanded
-          ? "h-[38%] border-t border-white/[0.08] bg-[#050507]"
-          : "h-[34px] border-t border-white/[0.06] bg-[#050507]/95 backdrop-blur"
+          ? "h-[40%] border-t border-white/10 bg-[#0b0d11]"
+          : "h-[34px] border-t border-white/10 bg-[#0b0d11]"
       }`}
     >
       {/* Header bar */}
-      <button
-        onClick={() => setExpanded((v) => !v)}
-        className="group flex h-[34px] w-full items-center gap-3 px-4 text-left transition-colors hover:bg-white/[0.02]"
-      >
-        <span className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-sense-dim transition-colors group-hover:text-sense-muted">
-          <span className="h-1.5 w-1.5 rounded-full bg-sense-success shadow-[0_0_6px_#00ff88]" />
-          Live collector log
+      <div className="flex h-[34px] w-full items-center gap-3 px-4">
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          className="flex items-center gap-2 font-mono text-[11px] text-white/80 transition hover:text-white"
+        >
+          Terminal <span className="text-[10px] text-white/40">⌄</span>
+        </button>
+        <span className="flex items-center gap-3 font-mono text-[13px] text-white/40">
+          <span className="cursor-pointer transition hover:text-white">＋</span>
+          <span className="cursor-pointer transition hover:text-white">•••</span>
         </span>
-        <span className="min-w-0 flex-1 overflow-hidden font-mono text-[11px]">
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          className="min-w-0 flex-1 overflow-hidden text-left font-mono text-[11px]"
+        >
           {latest ? (
             <span className="sense-marquee" style={{ color: LEVEL_COLOR[latest.level] }}>
               {stamp(latest.ts)} {latest.text} · {stamp(latest.ts)} {latest.text}
             </span>
           ) : (
-            <span className="text-sense-dim">awaiting collector…</span>
+            <span className="text-white/30">awaiting collector…</span>
           )}
-        </span>
+        </button>
         <span
-          className={`font-mono text-[11px] text-sense-dim transition-transform duration-200 ${
+          className={`font-mono text-[11px] text-white/40 transition-transform duration-200 ${
             expanded ? "rotate-180" : ""
           }`}
         >
           ▾
         </span>
-      </button>
+      </div>
 
       {/* Expanded body */}
       <AnimatePresence>
@@ -99,23 +98,25 @@ export default function TerminalStrip() {
             transition={{ duration: 0.15 }}
             className="h-[calc(100%-34px)] overflow-hidden px-4 pb-3"
           >
-            <div ref={scrollRef} className="sense-scroll sense-terminal h-full overflow-y-auto pt-1">
+            <div className="font-mono text-[11px] leading-[1.7] text-white/30">
+              brighten@MacBook-Pro ~ % <span className="text-white/70">oracle — live collector</span>
+            </div>
+            <div ref={scrollRef} className="sense-scroll sense-terminal h-[calc(100%-22px)] overflow-y-auto pt-1">
               {logs.length === 0 && (
-                <div className="font-mono text-[12px] text-sense-dim">no log lines yet</div>
+                <div className="font-mono text-[12px] text-white/30">no log lines yet</div>
               )}
               {logs.map((l, i) => (
                 <motion.div
                   key={i}
                   initial={{ opacity: 0, x: -4 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.15 }}
+                  transition={{ duration: 0.12 }}
                   className="flex gap-2.5 whitespace-pre-wrap font-mono text-[12px] leading-[1.75]"
                 >
-                  <span className="shrink-0 text-sense-dim/80">{stamp(l.ts)}</span>
-                  <span className="w-3 shrink-0 text-center" style={{ color: LEVEL_COLOR[l.level] }}>
-                    {LEVEL_ICON[l.level]}
+                  <span className="shrink-0 text-white/30">{stamp(l.ts)}</span>
+                  <span className="min-w-0 break-words" style={{ color: LEVEL_COLOR[l.level] }}>
+                    {l.text}
                   </span>
-                  <span className="min-w-0 break-words text-sense-muted">{l.text}</span>
                 </motion.div>
               ))}
             </div>
