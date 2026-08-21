@@ -1,96 +1,98 @@
-import { APP_NAME, USER_NAME, USER_PLAN } from '@/lib/config';
+'use client';
+
 import {
-  ArrowUpRight,
-  BookOpen,
-  ChevronDown,
-  Layers,
   MessageSquare,
-  Pencil,
+  MessageSquareText,
+  SquarePen,
+  MoreHorizontal,
+  LayoutTemplate,
+  ScrollText,
   Settings,
-  Sparkles,
+  ChevronDown,
 } from 'lucide-react';
+import { APP_NAME, USER_NAME, USER_PLAN } from '@/lib/config';
 
 const CHATS = [
-  { title: 'Watch iPhone 15 Pro', time: '2m ago' },
-  { title: 'AirPods restock', time: '1h ago' },
-  { title: 'MacBook price drop', time: '3h ago' },
+  { t: 'Sony A7IV under $800',   ago: '2m ago' },
+  { t: 'PS5 restock watch',      ago: '1h ago' },
+  { t: 'AirPods price drop',     ago: '3h ago' },
+  { t: 'MacBook Air tracking',   ago: 'Yesterday' },
+  { t: 'How does healing work?', ago: '2 days ago' },
 ];
 
 const TOOLS = [
-  { label: 'Templates', icon: Layers },
-  { label: 'Scar Log', icon: BookOpen },
-  { label: 'Settings', icon: Settings },
+  { icon: LayoutTemplate, label: 'Templates' },
+  { icon: ScrollText,     label: 'Scar Log' },
+  { icon: Settings,       label: 'Settings' },
 ];
 
 export default function Sidebar() {
   return (
-    <aside className="flex w-[232px] shrink-0 select-none flex-col border-r border-[var(--line)] bg-[var(--sidebar)] px-3 pb-3 pt-3">
-      {/* macOS traffic lights */}
-      <div className="mb-6 flex items-center gap-2 pl-2 pt-1">
-        <span className="h-3 w-3 rounded-full bg-[#ff5f57]" />
-        <span className="h-3 w-3 rounded-full bg-[#febc2e]" />
-        <span className="h-3 w-3 rounded-full bg-[#28c840]" />
+    <aside className="w-[218px] shrink-0 bg-[var(--sidebar)] border-r border-[var(--line)] flex flex-col">
+      {/* macOS traffic lights — exact colors and spacing */}
+      <div className="flex items-center gap-2 px-4 pt-4 pb-1">
+        <span className="w-3 h-3 rounded-full bg-[#ff5f57]" />
+        <span className="w-3 h-3 rounded-full bg-[#febc2e]" />
+        <span className="w-3 h-3 rounded-full bg-[#28c840]" />
       </div>
 
-      {/* brand */}
-      <div className="mb-6 flex items-center gap-2 pl-2">
-        <span className="grid h-[22px] w-[22px] place-items-center rounded-md bg-gradient-to-br from-[#c53df4] to-[#3a8df6] text-white">
-          <Sparkles size={13} strokeWidth={2.4} />
-        </span>
-        <span className="text-[16px] font-semibold text-[var(--ink)]">{APP_NAME}</span>
-        <ChevronDown size={15} className="text-[var(--gray-1)]" />
+      {/* App switcher row */}
+      <div className="flex items-center justify-between px-4 py-2">
+        <button className="flex items-center gap-1 text-[17px] font-semibold tracking-tight">
+          {APP_NAME}
+          <ChevronDown size={14} className="text-[var(--gray-2)] mt-0.5" />
+        </button>
+        <div className="flex items-center gap-3.5 text-[var(--gray-1)]">
+          <SquarePen size={16} />
+          <MoreHorizontal size={16} />
+        </div>
       </div>
 
-      {/* New Chat */}
-      <button className="mb-6 flex h-11 items-center justify-between rounded-[10px] bg-[#eef1f5] px-3 text-[var(--ios-blue)] transition hover:bg-[#e4e8ee]">
-        <span className="flex items-center gap-2.5 text-[14px]">
-          <Pencil size={16} />
-          New Chat
-        </span>
-        <ArrowUpRight size={16} />
-      </button>
+      {/* New Watch pill (mirrors "New Chat") */}
+      <div className="px-3 pt-1 pb-2">
+        <button className="w-full flex items-center gap-2 rounded-full bg-[var(--bubble)] px-3.5 py-2 hover:bg-[#e9e9ec] transition-colors">
+          <MessageSquareText size={16} className="text-[var(--ios-blue)]" />
+          <span className="text-[14px] font-medium text-[var(--ios-blue)]">New Watch</span>
+          <SquarePen size={13} className="ml-auto text-[var(--gray-2)]" />
+        </button>
+      </div>
 
       {/* Chats */}
-      <p className="mb-2 px-2 text-[13px] text-[var(--gray-1)]">Chats</p>
-      <div className="flex flex-col gap-0.5">
+      <p className="px-4 pt-2 pb-1 text-[12px] text-[var(--gray-2)]">Chats</p>
+      <nav className="flex-1 overflow-y-auto px-2 pb-2">
         {CHATS.map((c) => (
           <button
-            key={c.title}
-            className="rounded-lg px-2 py-2 text-left transition hover:bg-[#efeff1]"
+            key={c.t}
+            className="w-full flex items-start gap-2.5 rounded-lg px-2 py-[7px] text-left hover:bg-[var(--bubble)] transition-colors"
           >
-            <span className="flex items-center gap-2 truncate text-[12.5px] text-[var(--ink)]">
-              <MessageSquare size={14} className="shrink-0 text-[var(--gray-1)]" />
-              {c.title}
+            <MessageSquare size={14} className="mt-[3px] shrink-0 text-[var(--gray-2)]" />
+            <span className="min-w-0">
+              <span className="block truncate text-[13px] leading-snug">{c.t}</span>
+              <span className="block text-[11px] text-[var(--gray-2)]">{c.ago}</span>
             </span>
-            <span className="mt-1 block pl-6 text-[11px] text-[var(--gray-2)]">{c.time}</span>
           </button>
         ))}
-      </div>
 
-      {/* divider */}
-      <div className="mx-2 my-4 h-px bg-[var(--line)]" />
+        {/* Tools */}
+        <p className="px-2 pt-4 pb-1 text-[12px] text-[var(--gray-2)]">Tools</p>
+        {TOOLS.map(({ icon: Icon, label }) => (
+          <button
+            key={label}
+            className="w-full flex items-center gap-2.5 rounded-lg px-2 py-[7px] hover:bg-[var(--bubble)] transition-colors"
+          >
+            <Icon size={15} className="text-[var(--gray-1)]" />
+            <span className="text-[13px]">{label}</span>
+          </button>
+        ))}
+      </nav>
 
-      {/* Tools */}
-      <p className="mb-2 px-2 text-[13px] text-[var(--gray-1)]">Tools</p>
-      {TOOLS.map((t) => (
-        <button
-          key={t.label}
-          className="flex items-center gap-3 rounded-lg px-2 py-2.5 text-[13px] text-[var(--ink)] transition hover:bg-[#efeff1]"
-        >
-          <t.icon size={16} className="text-[#555]" />
-          {t.label}
-        </button>
-      ))}
-
-      {/* profile */}
-      <div className="mt-auto flex items-center gap-2.5 rounded-[10px] border border-[#e2e2e5] bg-white p-2.5">
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-[#eee] to-[#c9c9c9] text-[14px] font-semibold text-[var(--gray-1)]">
-          {USER_NAME.charAt(0)}
-        </span>
-        <span className="min-w-0">
-          <span className="block truncate text-[12px] font-medium text-[var(--ink)]">{USER_NAME}</span>
-          <span className="block text-[10px] text-[var(--gray-1)]">{USER_PLAN}</span>
-        </span>
+      {/* User card — pinned bottom */}
+      <div className="m-3 flex items-center gap-2.5 rounded-xl bg-[var(--bubble)] p-2.5">
+        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#0aa5ff] via-[#7b61ff] to-[#c86bff] shrink-0" />
+        <div className="min-w-0">
+          <p className="text-[13px] font-semibold leading-tight truncate">{USER_NAME} Brighten</p>
+          <p className="text-[11px] text-[var(--gray-2)]">{USER_PLAN}</p>
+        </div>
       </div>
     </aside>
   );
