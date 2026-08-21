@@ -6,10 +6,11 @@
 // returns null → we detect the break, re-derive the selector from the original
 // intent (the same thing Bright Data's heal does), log a scar, and re-scrape.
 
-import { getWatch, getWatches, updateWatch, createWatch, logScrape, logStructuredHeal, type WatchRow } from "./db";
+import { getWatch, getWatches, updateWatch, createWatch, logScrape, type WatchRow } from "./db";
 import { getProduct, TEMPLATES, PRODUCT_ID } from "./store";
 import { scrapeStore, parsePrice, type ExtractField } from "./scraper";
 import { emitAlert, emitLog } from "./stream";
+import { healWatch, STORE_COLLECTOR_ID } from "./heal";
 
 export function generateWatchId(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -84,6 +85,10 @@ export async function createWatchFromIntent(input: {
   const field: ExtractField = input.field === "stock" ? "stock" : "price";
   const selector = field === "price" ? t.priceSelector : t.stockSelector;
 
+  // Use the real Bright Data store collector when configured, so the watch's
+  // c_ ID is the production collector (same ID across heals — the whole point).
+  const collectorId = STORE_COLLECTOR_ID ?? generateCollectorId();
+
   const watch = await createWatch({
     id: generateWatchId(),
     label: input.label,
@@ -95,7 +100,7 @@ export async function createWatchFromIntent(input: {
     selector,
     query: input.query ?? null,
     status: "watching",
-    collector_id: generateCollectorId(),
+    collector_id: collectorId,
     product_name: product.name,
     next_check_at: new Date(),
   });
@@ -139,52 +144,19 @@ export async function runScrapePass(watchId: string): Promise<RunResult> {
     emitLog("error", "Empty extraction — break detected");
     events.push("break");
 
-    const oldSelector = watch.selector;
-    const t = TEMPLATES[product.template] ?? TEMPLATES.A;
-    const newSelector = field === "price" ? t.priceSelector : t.stockSelector;
-    const brokeAt = new Date();
-
-    emitLog("info", `Heal protocol · intent: "${watch.intent ?? `Find the ${field} for ${product.name}`}"`);
-    emitLog("info", `Bright Data heal dispatched (collector ${collectorId})`);
-
-    // Heal = re-derive the selector from the original intent against the new DOM.
-    await updateWatch(watchId, {
-      selector: newSelector,
-      status: "healing",
-      scar_count: (watch.scar_count ?? 0) + 1,
-    });
-
-    // Confidence: high when we match a known template selector, else lower.
-    const confidence = TEMPLATES[product.template] ? 94 : 78;
-    const healedAt = new Date();
-    const recoverySeconds = Math.max(1, Math.round((healedAt.getTime() - brokeAt.getTime()) / 1000));
-
-    await logStructuredHeal({
-      watch_id: watchId,
-      collector_id: collectorId,
-      broke_at: brokeAt,
-      healed_at: healedAt,
-      original_intent: watch.intent ?? `Find the ${field} for ${product.name}`,
-      old_selector: oldSelector,
-      new_selector: newSelector,
-      confidence,
-      recovery_seconds: recoverySeconds,
-      description: `Scar #${(watch.scar_count ?? 0) + 1} — ${field} selector moved`,
-      error_message: `Selector "${oldSelector}" no longer matches template ${product.template}`,
-    });
-
-    emitLog("success", `Healed · ${field} now at ${newSelector} · confidence ${confidence}%`);
-    emitLog("info", "Re-running…");
-
-    watch = (await getWatch(watchId))!;
-    outcome = await scrapeStore(field, newSelector);
+    // Real heal: Bright Data CLI when configured, deterministic otherwise.
+    const heal = await healWatch(watchId);
     healed = true;
     events.push("heal");
+
+    emitLog("info", "Re-running…");
+    watch = (await getWatch(watchId))!;
+    outcome = await scrapeStore(field, heal.newSelector);
 
     if (!outcome.broke) {
       emitLog(
         "success",
-        `Scar #${watch.scar_count} · healed in ${recoverySeconds}s · zero downtime downstream`,
+        `Scar #${watch.scar_count} · healed in ${Math.max(1, Math.round(heal.durationMs / 1000))}s · zero downtime downstream`,
       );
     }
   }

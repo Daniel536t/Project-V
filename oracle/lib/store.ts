@@ -128,43 +128,79 @@ export async function updateProduct(
 export function renderStoreHtml(p: ProductRow): string {
   const price = `$${p.price}`;
   const stock = p.in_stock ? "In Stock" : "Out of Stock";
-
   const jsonLd =
     p.template === "C"
       ? `<script type="application/ld+json">${JSON.stringify({
           "@type": "Offer",
+          name: p.name,
           price: String(p.price),
           priceCurrency: "USD",
           availability: p.in_stock ? "InStock" : "OutOfStock",
         })}</script>`
       : "";
 
+  const header = `<header class="site-header"><nav class="nav"><a href="/">Store</a><a href="/cameras">Cameras</a><a href="/support">Support</a></nav></header>`;
+  const footer = `<footer class="site-footer"><p>© 2026 CamBazaar · Free shipping over $50 · 30-day returns</p></footer>`;
+
   // Template A — "classic": .product-container > .price
   if (p.template === "A") {
-    return `<html><body>
-<div class="product-container">
-  <h1 class="title">${p.name}</h1>
-  <span class="price">${price}</span>
-  <span class="stock">${stock}</span>
-</div></body></html>`;
+    return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>${p.name} — CamBazaar</title></head><body>
+${header}
+<main class="page">
+  <nav class="breadcrumbs"><a href="/">Home</a> › <a href="/cameras">Cameras</a> › <span>${p.name}</span></nav>
+  <div class="product-container">
+    <div class="gallery"><img alt="${p.name}" src="/img/a7iv.jpg"></div>
+    <div class="info">
+      <h1 class="title">${p.name}</h1>
+      <p class="rating">★★★★★ 4.8 · 1,247 reviews</p>
+      <span class="price">${price}</span>
+      <span class="stock">${stock}</span>
+      <ul class="specs">
+        <li>33 MP Full-Frame CMOS</li>
+        <li>4K 60p · 10-bit</li>
+        <li>5-axis IBIS</li>
+        <li>759-point AF</li>
+      </ul>
+      <button class="cta">Add to Cart</button>
+    </div>
+  </div>
+</main>
+${footer}
+</body></html>`;
   }
 
   // Template B — "modern": .pricing-section > [data-test='current-price']
   if (p.template === "B") {
-    return `<html><body>
-<section class="pricing-section">
-  <h1 class="name">${p.name}</h1>
-  <span data-test="current-price">${price}</span>
-  <span data-test="availability">${stock}</span>
-</section></body></html>`;
+    return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>${p.name} — CamBazaar</title></head><body>
+${header}
+<main class="page">
+  <section class="pricing-section">
+    <div class="hero"><img alt="${p.name}" src="/img/a7iv.jpg"></div>
+    <h1 class="name">${p.name}</h1>
+    <p class="tagline">Full-Frame Mirrorless Camera</p>
+    <span data-test="current-price">${price}</span>
+    <span data-test="availability">${stock}</span>
+    <button class="cta">Add to Cart</button>
+  </section>
+</main>
+${footer}
+</body></html>`;
   }
 
   // Template C — "schema": JSON-LD + .display-price
-  return `<html><body>
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>${p.name} — CamBazaar</title></head><body>
 ${jsonLd}
-<main class="pdp">
-  <h1 class="heading">${p.name}</h1>
-  <span class="display-price">${price}</span>
-  <span class="availability-badge">${stock}</span>
-</main></body></html>`;
+${header}
+<main class="page">
+  <article class="pdp">
+    <div class="media"><img alt="${p.name}" src="/img/a7iv.jpg"></div>
+    <h1 class="heading">${p.name}</h1>
+    <p class="sku">SKU: ILCE-7M4</p>
+    <span class="display-price">${price}</span>
+    <span class="availability-badge">${stock}</span>
+    <dl class="details"><dt>Sensor</dt><dd>33MP CMOS</dd><dt>Video</dt><dd>4K60</dd></dl>
+  </article>
+</main>
+${footer}
+</body></html>`;
 }

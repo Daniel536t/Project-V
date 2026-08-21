@@ -31,15 +31,32 @@ DATABASE_URL=postgresql://...
 BRIGHT_DATA_API_KEY=your_key_here
 BRIGHT_DATA_SERP_ZONE=your_zone_here    # optional: live SERP search features
 BRIGHT_DATA_COLLECTOR_ID=c_xxxxxxxx     # optional: production collector
+BRIGHT_DATA_STORE_COLLECTOR_ID=c_xxxxxxxx  # the store page's real collector
 NVIDIA_API_KEY=your_nvidia_key          # intent parsing (NIM)
 NVIDIA_API_KEY_2=your_backup_key        # fallback key
 OPENROUTER_API_KEY=your_key_here        # optional fallback
 ```
 
-> The demo's scrape loop is fully real against the store's own rendered HTML.
-> `lib/brightdata.ts` also exposes the production Bright Data paths (`dca/trigger`,
-> `bdata scraper heal` via CLI) — the heal flow here re-derives the selector from
-> the original intent, which is exactly what Bright Data's heal does.
+### Real Bright Data heal (production path)
+
+Create a collector against the live store page once:
+
+```bash
+bdata scraper create "https://claude-coder.duckdns.org/api/store/html" \
+  "Extract the product price and stock status. Return JSON: price (number), in_stock (boolean)."
+```
+
+Put the returned `c_…` ID in `BRIGHT_DATA_STORE_COLLECTOR_ID`. When it's set:
+
+- every watch carries that **real** collector ID (same ID across heals),
+- heals genuinely run `bdata scraper heal <collector_id> "<original intent>"`
+  via the CLI (`--auto-approve`), and the CLI's output is surfaced in the
+  terminal + scar log,
+- if the CLI fails or times out, the heal falls back to deterministic
+  re-derivation so the demo never stalls (same semantic action).
+
+The scrape loop itself is fully real against the store's rendered HTML; the
+collector is what the store's page would be scraped by in production.
 
 ---
 

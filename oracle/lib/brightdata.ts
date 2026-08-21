@@ -49,38 +49,79 @@ export async function healScraper(description: string): Promise<string> {
 }
 
 /**
- * Invoke the Bright Data CLI heal server-side (documented path for healing).
- * The CLI must be pre-authenticated in the environment (BRIGHTDATA_API_KEY).
- * Used only in production; the demo heal re-derives the selector in-process
- * against the live store HTML (the same semantic action, deterministic).
+ * CLI helpers — the documented Bright Data path for running and healing
+ * scrapers. The CLI must be pre-authenticated (BRIGHTDATA_API_KEY). These are
+ * used by the store collector (`BRIGHT_DATA_STORE_COLLECTOR_ID`) so production
+ * heals genuinely go through `bdata scraper heal`.
+ */
+function cliEnv() {
+  return {
+    ...process.env,
+    BRIGHTDATA_API_KEY: process.env.BRIGHT_DATA_API_KEY ?? "",
+  };
+}
+
+async function runCli(args: string[], timeoutMs = 300_000): Promise<{ stdout: string; code: number; timedOut: boolean }> {
+  const { spawn } = await import("node:child_process");
+  return new Promise((resolve) => {
+    const child = spawn("npx", ["-y", "-p", "@brightdata/cli", "bdata", ...args], {
+      env: cliEnv(),
+      shell: true,
+    });
+    let stdout = "";
+    let stderr = "";
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      resolve({ stdout: stdout || stderr, code: -1, timedOut: true });
+    }, timeoutMs);
+    child.stdout.on("data", (d: Buffer) => (stdout += d.toString()));
+    child.stderr.on("data", (d: Buffer) => (stderr += d.toString()));
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      resolve({ stdout: stdout || stderr, code: code ?? -1, timedOut: false });
+    });
+  });
+}
+
+/**
+ * Run a collector against a URL synchronously (server-side 25–50s cap).
+ * Returns the parsed JSON the collector produced, or null on failure.
+ */
+export async function runCollectorCli(
+  collectorId: string,
+  url: string,
+  timeoutMs = 70_000,
+): Promise<Record<string, unknown> | null> {
+  const { stdout, code } = await runCli(
+    ["scraper", "run", collectorId, url, "--sync", "--json"],
+    timeoutMs,
+  );
+  if (code !== 0) return null;
+  try {
+    const parsed = JSON.parse(stdout);
+    // The envelope wraps the result; unwrap the common shapes.
+    if (parsed?.data != null) return parsed.data;
+    if (parsed?.result != null) return parsed.result;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Heal a collector in place via the CLI (AI self-heal from the original
+ * intent). Uses --auto-approve so the heal polls through to done. Returns the
+ * CLI output envelope so callers can surface the healed selector/status.
  */
 export async function healCollectorCli(
   collectorId: string,
   intent: string,
-): Promise<{ stdout: string; code: number }> {
-  const { spawn } = await import("node:child_process");
-  const env = {
-    ...process.env,
-    BRIGHTDATA_API_KEY: process.env.BRIGHT_DATA_API_KEY ?? "",
-  };
-  const args = [
-    "-y",
-    "-p",
-    "@brightdata/cli",
-    "bdata",
-    "scraper",
-    "heal",
-    collectorId,
-    intent,
-  ];
-  return new Promise((resolve) => {
-    const child = spawn("npx", args, { env, shell: true });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (d) => (stdout += d.toString()));
-    child.stderr.on("data", (d) => (stderr += d.toString()));
-    child.on("close", (code) => resolve({ stdout: stdout || stderr, code: code ?? -1 }));
-  });
+  timeoutMs = 300_000,
+): Promise<{ stdout: string; code: number; timedOut: boolean }> {
+  return runCli(
+    ["scraper", "heal", collectorId, intent, "--auto-approve", "--json"],
+    timeoutMs,
+  );
 }
 
 /** Scrape a historical snapshot of a page from the Wayback Machine. */
