@@ -59,6 +59,9 @@ export default function StorePanel({
   const [view, setView] = useState<"storefront" | "product">("storefront");
   const [history, setHistory] = useState<HistoryPoint[]>([]);
   const [watchingId, setWatchingId] = useState<string | null>(null);
+  const [watches, setWatches] = useState<
+    Array<{ product_name?: string | null; status?: string }>
+  >([]);
 
   const loadHistory = useCallback(async () => {
     try {
@@ -74,6 +77,16 @@ export default function StorePanel({
     try {
       const r = await fetch("/api/products/active");
       setProduct(await r.json());
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const loadWatches = useCallback(async () => {
+    try {
+      const r = await fetch("/api/watches");
+      const d = await r.json();
+      if (Array.isArray(d.watches)) setWatches(d.watches);
     } catch {
       /* ignore */
     }
@@ -98,10 +111,19 @@ export default function StorePanel({
     };
   }, [load, loadHistory]);
 
-  // When a watch is created (via SENSE chat), reveal the product detail page.
+  // Poll for watch state so the storefront badge tracks the live watch.
   useEffect(() => {
+    loadWatches();
+    const t = setInterval(loadWatches, 4000);
+    return () => clearInterval(t);
+  }, [loadWatches]);
+
+  // When a watch is created (via SENSE chat), reveal the product detail page
+  // and refresh the watched-product badge.
+  useEffect(() => {
+    loadWatches();
     if (watchSignal > 0) setView("product");
-  }, [watchSignal]);
+  }, [watchSignal, loadWatches]);
 
   // One-click watch from the storefront: select the product, create a watch,
   // then reveal the detail page and notify the SENSE chat via a window event.
@@ -115,12 +137,31 @@ export default function StorePanel({
         body: JSON.stringify({ product_id: id }),
       });
       const d = await r.json();
+      if (Array.isArray(d.watches)) setWatches(d.watches);
       setView("product");
       window.dispatchEvent(new CustomEvent("sense:watch-created", { detail: d }));
     } catch {
       /* ignore */
     } finally {
       setWatchingId(null);
+    }
+  }
+
+  const activeWatch = watches.find(
+    (w) => w.status !== "deleted" && w.status !== "stopped",
+  );
+  const watchedProductId = activeWatch?.product_name
+    ? FEATURED_PRODUCTS.find((f) => f.name === activeWatch.product_name)?.id ?? null
+    : null;
+
+  // Card click → navigate. The watched product just reopens its detail page;
+  // any other card selects + watches it first (selection and watching are the
+  // same single-active-watch model, so the scraper always sees what you see).
+  function openProduct(id: string) {
+    if (id === watchedProductId) {
+      setView("product");
+    } else {
+      quickWatch(id);
     }
   }
 
@@ -138,7 +179,12 @@ export default function StorePanel({
               exit={{ opacity: 0 }}
               transition={{ duration: 0.18 }}
             >
-              <Storefront onWatch={quickWatch} watchingId={watchingId} />
+              <Storefront
+                onOpen={openProduct}
+                onWatch={quickWatch}
+                watchingId={watchingId}
+                watchedId={watchedProductId}
+              />
             </motion.div>
           ) : (
             <motion.div
@@ -229,11 +275,15 @@ function StoreFooter() {
  * ------------------------------------------------------------------ */
 
 function Storefront({
+  onOpen,
   onWatch,
   watchingId,
+  watchedId,
 }: {
+  onOpen: (id: string) => void;
   onWatch: (id: string) => void;
   watchingId: string | null;
+  watchedId: string | null;
 }) {
   const featuredRef = useRef<HTMLDivElement>(null);
   const [highlight, setHighlight] = useState(false);
@@ -350,11 +400,12 @@ function Storefront({
         <div className="grid grid-cols-5 gap-3">
           {FEATURED_PRODUCTS.map((p, i) => {
             const isWatching = watchingId === p.id;
+            const isWatched = watchedId === p.id;
             return (
               <div
                 key={p.id}
                 data-featured-id={p.id}
-                onClick={() => onWatch(p.id)}
+                onClick={() => onOpen(p.id)}
                 className={`group relative cursor-pointer rounded-[12px] border bg-white p-3 text-left transition duration-300 hover:shadow-md ${
                   highlight && i === 0
                     ? "scale-[1.05] border-[#0071e3] ring-2 ring-[#0071e3] ring-offset-2 shadow-[0_12px_30px_-8px_rgba(0,113,227,0.35)]"
@@ -366,9 +417,15 @@ function Storefront({
                     {p.tag}
                   </span>
                 )}
-                <span className="absolute right-3 top-3 flex items-center gap-1 rounded-full border border-[#00d4ff]/40 bg-[#00d4ff]/10 px-1.5 py-0.5 text-[9px] font-medium text-[#0077a3]">
-                  <span className="h-1 w-1 rounded-full bg-[#00d4ff]" /> SENSE
-                </span>
+                {isWatched ? (
+                  <span className="absolute right-3 top-3 flex items-center gap-1 rounded-full border border-[#34c759]/40 bg-[#e5f6ec] px-1.5 py-0.5 text-[9px] font-semibold text-[#007a3d]">
+                    <span className="h-1 w-1 rounded-full bg-[#34c759]" /> Watching
+                  </span>
+                ) : (
+                  <span className="absolute right-3 top-3 flex items-center gap-1 rounded-full border border-[#00d4ff]/40 bg-[#00d4ff]/10 px-1.5 py-0.5 text-[9px] font-medium text-[#0077a3]">
+                    <span className="h-1 w-1 rounded-full bg-[#00d4ff]" /> SENSE
+                  </span>
+                )}
                 <div className="flex h-[110px] items-center justify-center overflow-hidden rounded-[8px] bg-[#fafafa]">
                   <img
                     src={p.image}
@@ -396,10 +453,10 @@ function Storefront({
                     e.stopPropagation();
                     onWatch(p.id);
                   }}
-                  disabled={Boolean(watchingId)}
+                  disabled={Boolean(watchingId) || isWatched}
                   className="mt-2.5 flex w-full items-center justify-center gap-1 rounded-full border border-[#00d4ff]/40 bg-[#00d4ff]/[0.07] px-2 py-1.5 text-[11px] font-medium text-[#0077a3] transition hover:bg-[#00d4ff]/[0.14] disabled:opacity-50"
                 >
-                  {isWatching ? "Watching…" : "Watch"}
+                  {isWatched ? "✓ Watching" : isWatching ? "Watching…" : "Watch"}
                 </button>
               </div>
             );
