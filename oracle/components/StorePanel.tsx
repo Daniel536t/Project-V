@@ -5,8 +5,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   FEATURED_PRODUCTS,
   HERO_IMAGES,
-  PRODUCT_IMAGES,
-  PRODUCT_NAME,
+  featuredById,
+  type FeaturedProduct,
 } from "@/lib/store-shared";
 
 interface ProductState {
@@ -24,30 +24,12 @@ interface HistoryPoint {
   at: string;
 }
 
-const ALL_IMAGES = [PRODUCT_IMAGES.main, ...PRODUCT_IMAGES.gallery];
-
-const FINISHES = [
-  { name: "Natural Titanium", hex: "#b8b2a6" },
-  { name: "Blue Titanium", hex: "#3a4a63" },
-  { name: "White Titanium", hex: "#d9d4c9" },
-  { name: "Black Titanium", hex: "#2c2c2e" },
-];
-
-const STORAGE = ["128GB", "256GB", "512GB", "1TB"];
-
-const BULLETS = [
-  "A17 Pro chip with a 6-core GPU for console-class gaming.",
-  "Aerospace-grade titanium — the lightest Pro model ever.",
-  "48MP Pro camera system with up to 3x telephoto.",
-  "USB-C connector and all-day battery life.",
-];
-
 const REVIEWS = [
   {
     name: "Marcus T.",
     stars: "★★★★★",
     date: "Reviewed Aug 14, 2026",
-    text: "Titanium feels incredible and the camera is a huge step up. Battery easily lasts me all day.",
+    text: "Build quality is excellent and it's a big step up from my last one. Lasts all day, no complaints.",
     helpful: "312 people found this helpful",
   },
   {
@@ -61,7 +43,7 @@ const REVIEWS = [
     name: "Danny R.",
     stars: "★★★★☆",
     date: "Reviewed Jul 29, 2026",
-    text: "USB-C finally. Action button is a nice touch. Four stars only because the box arrived a bit scuffed.",
+    text: "Exactly as described, fast shipping. Four stars only because the box arrived a bit scuffed.",
     helpful: "118 people found this helpful",
   },
 ];
@@ -76,10 +58,11 @@ export default function StorePanel({
   const [product, setProduct] = useState<ProductState | null>(null);
   const [view, setView] = useState<"storefront" | "product">("storefront");
   const [history, setHistory] = useState<HistoryPoint[]>([]);
+  const [watchingId, setWatchingId] = useState<string | null>(null);
 
   const loadHistory = useCallback(async () => {
     try {
-      const r = await fetch("/api/products/iphone-15-pro/history");
+      const r = await fetch("/api/products/active/history");
       const d = await r.json();
       if (Array.isArray(d.points)) setHistory(d.points);
     } catch {
@@ -89,7 +72,7 @@ export default function StorePanel({
 
   const load = useCallback(async () => {
     try {
-      const r = await fetch("/api/products/iphone-15-pro");
+      const r = await fetch("/api/products/active");
       setProduct(await r.json());
     } catch {
       /* ignore */
@@ -115,11 +98,31 @@ export default function StorePanel({
     };
   }, [load, loadHistory]);
 
-  // When a watch is created (via SENSE chat), reveal the product detail page
-  // so the user sees the very thing SENSE is watching.
+  // When a watch is created (via SENSE chat), reveal the product detail page.
   useEffect(() => {
     if (watchSignal > 0) setView("product");
   }, [watchSignal]);
+
+  // One-click watch from the storefront: select the product, create a watch,
+  // then reveal the detail page and notify the SENSE chat via a window event.
+  async function quickWatch(id: string) {
+    if (watchingId) return;
+    setWatchingId(id);
+    try {
+      const r = await fetch("/api/watches/quick", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ product_id: id }),
+      });
+      const d = await r.json();
+      setView("product");
+      window.dispatchEvent(new CustomEvent("sense:watch-created", { detail: d }));
+    } catch {
+      /* ignore */
+    } finally {
+      setWatchingId(null);
+    }
+  }
 
   return (
     <div className="relative flex h-full flex-col bg-white text-[#1d1d1f]">
@@ -135,7 +138,7 @@ export default function StorePanel({
               exit={{ opacity: 0 }}
               transition={{ duration: 0.18 }}
             >
-              <Storefront onOpenProduct={() => setView("product")} />
+              <Storefront onWatch={quickWatch} watchingId={watchingId} />
             </motion.div>
           ) : (
             <motion.div
@@ -225,7 +228,13 @@ function StoreFooter() {
  * Storefront — hero + benefits + featured products
  * ------------------------------------------------------------------ */
 
-function Storefront({ onOpenProduct }: { onOpenProduct: () => void }) {
+function Storefront({
+  onWatch,
+  watchingId,
+}: {
+  onWatch: (id: string) => void;
+  watchingId: string | null;
+}) {
   const featuredRef = useRef<HTMLDivElement>(null);
   const [highlight, setHighlight] = useState(false);
 
@@ -317,15 +326,13 @@ function Storefront({ onOpenProduct }: { onOpenProduct: () => void }) {
         </div>
         <div className="grid grid-cols-5 gap-3">
           {FEATURED_PRODUCTS.map((p, i) => {
-            const isWatched = i === 0;
+            const isWatching = watchingId === p.id;
             return (
-              <button
+              <div
                 key={p.id}
-                onClick={() => isWatched && onOpenProduct()}
-                className={`group relative rounded-[12px] border bg-white p-3 text-left transition hover:shadow-md ${
-                  isWatched ? "cursor-pointer" : "cursor-default"
-                } ${
-                  highlight && isWatched
+                onClick={() => onWatch(p.id)}
+                className={`group relative cursor-pointer rounded-[12px] border bg-white p-3 text-left transition hover:shadow-md ${
+                  highlight && i === 0
                     ? "border-[#0071e3] ring-2 ring-[#0071e3] ring-offset-2"
                     : "border-[#e4e4e6]"
                 }`}
@@ -335,12 +342,10 @@ function Storefront({ onOpenProduct }: { onOpenProduct: () => void }) {
                     {p.tag}
                   </span>
                 )}
-                {isWatched && (
-                  <span className="absolute right-3 top-3 flex items-center gap-1 rounded-full border border-[#00d4ff]/40 bg-[#00d4ff]/10 px-1.5 py-0.5 text-[9px] font-medium text-[#0077a3]">
-                    <span className="h-1 w-1 rounded-full bg-[#00d4ff]" /> SENSE
-                  </span>
-                )}
-                <div className="flex h-[120px] items-center justify-center overflow-hidden rounded-[8px] bg-[#fafafa]">
+                <span className="absolute right-3 top-3 flex items-center gap-1 rounded-full border border-[#00d4ff]/40 bg-[#00d4ff]/10 px-1.5 py-0.5 text-[9px] font-medium text-[#0077a3]">
+                  <span className="h-1 w-1 rounded-full bg-[#00d4ff]" /> SENSE
+                </span>
+                <div className="flex h-[110px] items-center justify-center overflow-hidden rounded-[8px] bg-[#fafafa]">
                   <img
                     src={p.image}
                     alt={p.name}
@@ -350,9 +355,7 @@ function Storefront({ onOpenProduct }: { onOpenProduct: () => void }) {
                 <div className="mt-2 truncate text-[11px] font-semibold text-[#1d1d1f]">
                   {p.name}
                 </div>
-                <div className="mt-1 text-[11px] font-medium text-[#6e6e73]">
-                  ${p.price}
-                </div>
+                <div className="mt-1 text-[11px] font-medium text-[#6e6e73]">${p.price}</div>
                 <div className="mt-1.5 flex gap-1">
                   {p.colors.map((c) => (
                     <span
@@ -362,7 +365,17 @@ function Storefront({ onOpenProduct }: { onOpenProduct: () => void }) {
                     />
                   ))}
                 </div>
-              </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onWatch(p.id);
+                  }}
+                  disabled={Boolean(watchingId)}
+                  className="mt-2.5 flex w-full items-center justify-center gap-1 rounded-full border border-[#00d4ff]/40 bg-[#00d4ff]/[0.07] px-2 py-1.5 text-[11px] font-medium text-[#0077a3] transition hover:bg-[#00d4ff]/[0.14] disabled:opacity-50"
+                >
+                  {isWatching ? "Watching…" : "Watch"}
+                </button>
+              </div>
             );
           })}
         </div>
@@ -384,9 +397,9 @@ function ProductDetail({
   history: HistoryPoint[];
   onBack: () => void;
 }) {
-  const [finish, setFinish] = useState(0);
-  const [storage, setStorage] = useState(0);
   const [added, setAdded] = useState(false);
+  const meta = featuredById(product.id) ?? FEATURED_PRODUCTS[0];
+  const name = product.name || meta.name;
 
   const price = `$${Number(product.price).toFixed(2)}`;
   const compare = `$${Math.max(
@@ -412,16 +425,14 @@ function ProductDetail({
   };
 
   const shared = {
+    meta,
+    name,
     price,
     compare,
     savePct,
     inStock,
     stockLabel,
     stockLevel: product.stock_level,
-    finish,
-    setFinish,
-    storage,
-    setStorage,
     added,
     addToBag,
     history,
@@ -429,14 +440,11 @@ function ProductDetail({
 
   return (
     <div className="mx-auto max-w-5xl px-6 pt-5">
-      <button
-        onClick={onBack}
-        className="mb-3 text-[13px] text-[#0066cc] hover:underline"
-      >
+      <button onClick={onBack} className="mb-3 text-[13px] text-[#0066cc] hover:underline">
         ← Back to Store
       </button>
       <div className="text-[12px] text-[#6e6e73]">
-        Store › iPhone › <span className="text-[#1d1d1f]">{PRODUCT_NAME}</span>
+        Store › <span className="text-[#1d1d1f]">{name}</span>
       </div>
 
       <AnimatePresence mode="wait">
@@ -448,103 +456,46 @@ function ProductDetail({
   );
 }
 
-interface SharedProps {
+interface DetailProps {
+  meta: FeaturedProduct;
+  name: string;
   price: string;
   compare: string;
   savePct: number;
   inStock: boolean;
   stockLabel: string;
   stockLevel: number;
-  finish: number;
-  setFinish: (i: number) => void;
-  storage: number;
-  setStorage: (i: number) => void;
   added: boolean;
   addToBag: () => void;
   history: HistoryPoint[];
 }
 
-function Gallery() {
-  const [active, setActive] = useState(0);
+function Gallery({ meta }: { meta: FeaturedProduct }) {
   return (
-    <div className="flex gap-3">
-      <div className="flex flex-col gap-2">
-        {ALL_IMAGES.map((u, i) => (
-          <button
-            key={i}
-            onClick={() => setActive(i)}
-            className={`h-[56px] w-[56px] overflow-hidden rounded-[10px] border bg-white transition ${
-              i === active ? "border-[#0071e3] ring-1 ring-[#0071e3]" : "border-[#e8e8ed] hover:border-[#0071e3]/50"
-            }`}
-          >
-            <img src={u} alt="" className="h-full w-full object-cover" />
-          </button>
-        ))}
-      </div>
-      <div className="group flex min-h-[300px] flex-1 items-center justify-center overflow-hidden rounded-[16px] bg-[#f5f5f7] p-5">
-        <img
-          src={ALL_IMAGES[active]}
-          alt={PRODUCT_IMAGES.alt}
-          className="max-h-[360px] max-w-full object-contain transition-transform duration-300 group-hover:scale-[1.05]"
-        />
-      </div>
+    <div className="group flex min-h-[300px] flex-1 items-center justify-center overflow-hidden rounded-[16px] bg-[#f5f5f7] p-5">
+      <img
+        src={meta.image}
+        alt={meta.name}
+        className="max-h-[360px] max-w-full object-contain transition-transform duration-300 group-hover:scale-[1.05]"
+      />
     </div>
   );
 }
 
-function FinishPicker({
-  finish,
-  setFinish,
-}: {
-  finish: number;
-  setFinish: (i: number) => void;
-}) {
+function ColorPicker({ meta }: { meta: FeaturedProduct }) {
   return (
     <div className="mt-3.5">
-      <div className="text-[13px] font-semibold">Finish</div>
+      <div className="text-[13px] font-semibold">Color</div>
       <div className="mt-2 flex items-center gap-2.5">
-        {FINISHES.map((f, i) => (
-          <button
-            key={f.name}
-            onClick={() => setFinish(i)}
-            title={f.name}
+        {meta.colors.map((c, i) => (
+          <span
+            key={c}
+            title={`Color ${i + 1}`}
             className={`h-6 w-6 rounded-full border transition ${
-              i === finish
-                ? "border-[#0071e3] ring-2 ring-[#0071e3] ring-offset-2"
-                : "border-[#d2d2d7] hover:border-[#0071e3]/60"
+              i === 0 ? "border-[#0071e3] ring-2 ring-[#0071e3] ring-offset-2" : "border-[#d2d2d7]"
             }`}
-            style={{ background: f.hex }}
+            style={{ background: c }}
           />
-        ))}
-        <span className="ml-1 text-[12px] text-[#6e6e73]">{FINISHES[finish].name}</span>
-      </div>
-    </div>
-  );
-}
-
-function StoragePicker({
-  storage,
-  setStorage,
-}: {
-  storage: number;
-  setStorage: (i: number) => void;
-}) {
-  return (
-    <div className="mt-3.5">
-      <div className="text-[13px] font-semibold">Storage</div>
-      <div className="mt-2 flex flex-wrap gap-2">
-        {STORAGE.map((s, i) => (
-          <button
-            key={s}
-            onClick={() => setStorage(i)}
-            className={`rounded-[10px] border px-4 py-1.5 text-[13px] font-medium transition ${
-              i === storage
-                ? "border-[#0071e3] text-[#0071e3] shadow-[inset_0_0_0_1px_#0071e3]"
-                : "border-[#d2d2d7] text-[#1d1d1f] hover:border-[#0071e3]/60"
-            }`}
-          >
-            {s}
-          </button>
         ))}
       </div>
     </div>
@@ -681,7 +632,7 @@ function Reviews() {
 
 /* ---- Template A — Apple 2-column (gallery + buy box) ---- */
 
-function TemplateA(props: SharedProps) {
+function TemplateA(props: DetailProps) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -690,10 +641,10 @@ function TemplateA(props: SharedProps) {
       transition={{ duration: 0.22, ease: "easeOut" }}
     >
       <div className="mt-3 grid gap-9 md:grid-cols-2">
-        <Gallery />
+        <Gallery meta={props.meta} />
         <div className="product-container">
-          <h1 className="text-[30px] font-bold leading-[1.1] tracking-[-0.5px]">{PRODUCT_NAME}</h1>
-          <p className="mt-1 text-[16px] text-[#6e6e73]">Titanium. So strong. So light. Pro.</p>
+          <h1 className="text-[30px] font-bold leading-[1.1] tracking-[-0.5px]">{props.name}</h1>
+          <p className="mt-1 text-[16px] text-[#6e6e73]">{props.meta.tagline}</p>
           <div className="my-4 border-b border-[#e8e8ed]" />
           <div className="flex flex-wrap items-baseline gap-2.5">
             <span className="price text-[30px] font-bold tracking-tight">{props.price}</span>
@@ -705,10 +656,9 @@ function TemplateA(props: SharedProps) {
           </span>
           <Urgency inStock={props.inStock} stockLevel={props.stockLevel} />
           <Sparkline points={props.history} />
-          <FinishPicker finish={props.finish} setFinish={props.setFinish} />
-          <StoragePicker storage={props.storage} setStorage={props.setStorage} />
+          <ColorPicker meta={props.meta} />
           <ul className="mt-4 list-disc space-y-1 pl-5 text-[13px] leading-relaxed">
-            {BULLETS.map((b) => (
+            {props.meta.bullets.map((b) => (
               <li key={b}>{b}</li>
             ))}
           </ul>
@@ -728,7 +678,7 @@ function TemplateA(props: SharedProps) {
 
 /* ---- Template B — full-bleed hero + centered buy box ---- */
 
-function TemplateB(props: SharedProps) {
+function TemplateB(props: DetailProps) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -738,15 +688,11 @@ function TemplateB(props: SharedProps) {
       className="-mx-6"
     >
       <div className="bg-[#f5f5f7]">
-        <img
-          src={PRODUCT_IMAGES.main}
-          alt={PRODUCT_IMAGES.alt}
-          className="mx-auto max-h-[280px] w-full object-contain"
-        />
+        <img src={props.meta.image} alt={props.meta.name} className="mx-auto max-h-[280px] w-full object-contain" />
       </div>
       <div className="pricing-section mx-auto max-w-xl px-6 pb-10 pt-6 text-center">
-        <h1 className="text-[28px] font-bold tracking-tight">{PRODUCT_NAME}</h1>
-        <p className="text-[14px] text-[#6e6e73]">Titanium. So strong. So light. Pro.</p>
+        <h1 className="text-[28px] font-bold tracking-tight">{props.name}</h1>
+        <p className="text-[14px] text-[#6e6e73]">{props.meta.tagline}</p>
         <div className="mt-4 flex flex-wrap items-baseline justify-center gap-2.5">
           <span data-test="current-price" className="text-[38px] font-bold tracking-tight">
             {props.price}
@@ -764,13 +710,10 @@ function TemplateB(props: SharedProps) {
           <Sparkline points={props.history} />
         </div>
         <div className="mt-3 flex justify-center">
-          <FinishPicker finish={props.finish} setFinish={props.setFinish} />
-        </div>
-        <div className="mt-3 flex justify-center">
-          <StoragePicker storage={props.storage} setStorage={props.setStorage} />
+          <ColorPicker meta={props.meta} />
         </div>
         <div className="mt-5 grid grid-cols-2 gap-2 text-left">
-          {["A17 Pro chip", "Titanium design", "48MP camera", "USB-C"].map((s) => (
+          {props.meta.bullets.slice(0, 4).map((s) => (
             <div key={s} className="rounded-[10px] bg-[#f5f5f7] px-3.5 py-2.5 text-[13px] transition hover:bg-[#ececf0]">
               {s}
             </div>
@@ -793,9 +736,9 @@ function TemplateB(props: SharedProps) {
 
 /* ---- Template C — 3-column + rail + tabs + JSON-LD ---- */
 
-function TemplateC(props: SharedProps) {
+function TemplateC(props: DetailProps) {
   const [tab, setTab] = useState(0);
-  const tabs = ["Overview", "Tech Specs", "Shipping & Returns"];
+  const tabs = ["Overview", "Shipping & Returns"];
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -804,10 +747,10 @@ function TemplateC(props: SharedProps) {
       transition={{ duration: 0.22, ease: "easeOut" }}
     >
       <div className="mt-3 grid gap-7 lg:grid-cols-[1fr_1.1fr_0.7fr]">
-        <Gallery />
+        <Gallery meta={props.meta} />
         <div className="buybox">
-          <h1 className="text-[30px] font-bold leading-[1.1] tracking-[-0.5px]">{PRODUCT_NAME}</h1>
-          <p className="mt-1 text-[16px] text-[#6e6e73]">Titanium. So strong. So light. Pro.</p>
+          <h1 className="text-[30px] font-bold leading-[1.1] tracking-[-0.5px]">{props.name}</h1>
+          <p className="mt-1 text-[16px] text-[#6e6e73]">{props.meta.tagline}</p>
           <div className="my-4 border-b border-[#e8e8ed]" />
           <div className="flex flex-wrap items-baseline gap-2.5">
             <span className="display-price text-[30px] font-bold tracking-tight">{props.price}</span>
@@ -821,27 +764,21 @@ function TemplateC(props: SharedProps) {
           </div>
           <Urgency inStock={props.inStock} stockLevel={props.stockLevel} />
           <Sparkline points={props.history} />
-          <FinishPicker finish={props.finish} setFinish={props.setFinish} />
-          <StoragePicker storage={props.storage} setStorage={props.setStorage} />
+          <ColorPicker meta={props.meta} />
           <AddToBag inStock={props.inStock} onAdd={props.addToBag} added={props.added} />
           <BuyButton />
         </div>
         <aside className="rounded-[16px] border border-[#e8e8ed] p-4">
-          <h3 className="text-[14px] font-semibold">Why iPhone</h3>
+          <h3 className="text-[14px] font-semibold">Why aperture</h3>
           <div className="mt-2 space-y-2 border-b border-[#e8e8ed] pb-3">
-            <div className="flex items-center gap-2.5">
-              <img src={PRODUCT_IMAGES.gallery[1]} alt="trade-in" className="h-11 w-11 rounded-[8px] border border-[#e8e8ed] object-cover" />
-              <div>
-                <div className="text-[12px] leading-tight">Apple Trade In</div>
-                <div className="mt-0.5 text-[12px] font-semibold">Save up to $630</div>
-              </div>
+            <div className="text-[12px] leading-tight">
+              <b className="text-[#1d1d1f]">Free delivery</b> — on every order
             </div>
-            <div className="flex items-center gap-2.5">
-              <img src={PRODUCT_IMAGES.gallery[3]} alt="applecare" className="h-11 w-11 rounded-[8px] border border-[#e8e8ed] object-cover" />
-              <div>
-                <div className="text-[12px] leading-tight">AppleCare+</div>
-                <div className="mt-0.5 text-[12px] font-semibold">From $9.99/mo.</div>
-              </div>
+            <div className="text-[12px] leading-tight">
+              <b className="text-[#1d1d1f]">30-day returns</b> — no questions asked
+            </div>
+            <div className="text-[12px] leading-tight">
+              <b className="text-[#1d1d1f]">1-year warranty</b> — included
             </div>
           </div>
           <div className="mt-3 text-[12px] leading-relaxed text-[#6e6e73]">
@@ -872,30 +809,13 @@ function TemplateC(props: SharedProps) {
           <>
             <h4 className="mb-1 text-[13.5px] font-semibold">Overview</h4>
             <ul className="list-disc space-y-1 pl-5">
-              <li>Titanium design — the lightest, strongest Pro iPhone ever.</li>
-              <li>A17 Pro chip brings console-class gaming to a phone.</li>
-              <li>48MP Pro camera system with up to 3x optical zoom.</li>
-              <li>USB-C, Action button, and all-day battery life.</li>
+              {props.meta.bullets.map((b) => (
+                <li key={b}>{b}</li>
+              ))}
             </ul>
           </>
         )}
         {tab === 1 && (
-          <table className="w-full border-collapse text-[12.5px]">
-            {[
-              ["Display", '6.1" Super Retina XDR · ProMotion'],
-              ["Chip", "A17 Pro"],
-              ["Camera", "48MP main · 3x telephoto · 12MP ultrawide"],
-              ["Connector", "USB-C"],
-              ["Battery", "Up to 29 hours video playback"],
-            ].map(([k, v]) => (
-              <tr key={k}>
-                <td className="w-[38%] border-b border-[#e8e8ed] py-1.5 pr-2 text-[#6e6e73]">{k}</td>
-                <td className="border-b border-[#e8e8ed] py-1.5">{v}</td>
-              </tr>
-            ))}
-          </table>
-        )}
-        {tab === 2 && (
           <ul className="list-disc space-y-1 pl-5">
             <li>Free delivery, in stock.</li>
             <li>30-day hassle-free returns.</li>

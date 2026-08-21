@@ -288,6 +288,11 @@ export async function deleteWatch(id: string): Promise<boolean> {
   return (res.rowCount ?? 0) > 0;
 }
 
+export async function deleteAllWatches(): Promise<number> {
+  const res = await getPool().query(`DELETE FROM watches`);
+  return res.rowCount ?? 0;
+}
+
 // ---- Scrape history (SENSE) ----
 
 export interface ScrapeHistoryRow {

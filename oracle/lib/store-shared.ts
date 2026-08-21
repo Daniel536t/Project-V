@@ -32,21 +32,30 @@ export interface FeaturedProduct {
   price: number;
   image: string;
   colors: string[];
+  bullets: string[];
+  watchTarget: number;
   tag?: string;
 }
 
-// The storefront's featured lineup. Only the first item (the watched product)
-// is backed by the live `products` table; the rest are static storefront
-// chrome, like the reference screenshot's five product cards.
+// The storefront's featured lineup. Any of these can become the active
+// product: clicking "Watch" selects it into the live `products` table, so the
+// scraper (and the break/heal demo) target whatever the user is watching.
 export const FEATURED_PRODUCTS: FeaturedProduct[] = [
   {
     id: "iphone-15-pro",
     name: "iPhone 15 Pro",
-    tagline: "Titanium. So strong. So light.",
+    tagline: "Titanium. So strong. So light. Pro.",
     price: 999,
     image:
       "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=600&q=80",
     colors: ["#b8b2a6", "#3a4a63", "#2c2c2e"],
+    bullets: [
+      "A17 Pro chip with a 6-core GPU for console-class gaming.",
+      "Aerospace-grade titanium — the lightest Pro model ever.",
+      "48MP Pro camera system with up to 3x telephoto.",
+      "USB-C connector and all-day battery life.",
+    ],
+    watchTarget: 949,
     tag: "New",
   },
   {
@@ -57,6 +66,13 @@ export const FEATURED_PRODUCTS: FeaturedProduct[] = [
     image:
       "https://images.unsplash.com/photo-1600294037681-c80b4cb5b434?auto=format&fit=crop&w=600&q=80",
     colors: ["#f5f5f7"],
+    bullets: [
+      "Adaptive Audio and active noise cancellation.",
+      "Personalized Spatial Audio with dynamic head tracking.",
+      "Up to 6 hours listening time (30 with the case).",
+      "Sweat and water resistant.",
+    ],
+    watchTarget: 229,
   },
   {
     id: "macbook-air-15",
@@ -66,6 +82,13 @@ export const FEATURED_PRODUCTS: FeaturedProduct[] = [
     image:
       "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&w=600&q=80",
     colors: ["#1d1d1f", "#e8e2d6", "#5a5a5e"],
+    bullets: [
+      '15.3" Liquid Retina display.',
+      "M3 chip for fast, efficient performance.",
+      "Up to 18 hours of battery life.",
+      "Silent, fanless design.",
+    ],
+    watchTarget: 1199,
   },
   {
     id: "apple-watch-s9",
@@ -75,6 +98,13 @@ export const FEATURED_PRODUCTS: FeaturedProduct[] = [
     image:
       "https://images.unsplash.com/photo-1579586337278-3befd40fd17a?auto=format&fit=crop&w=600&q=80",
     colors: ["#1d1d1f", "#e8e2d6", "#f0c0c6"],
+    bullets: [
+      "S9 SiP with a brighter display.",
+      "Double Tap gesture control.",
+      "Advanced health sensors.",
+      "All-day 18-hour battery.",
+    ],
+    watchTarget: 349,
   },
   {
     id: "airtag-4",
@@ -84,5 +114,16 @@ export const FEATURED_PRODUCTS: FeaturedProduct[] = [
     image:
       "https://images.unsplash.com/photo-1600294037681-c80b4cb5b434?auto=format&fit=crop&w=600&q=80",
     colors: ["#f5f5f7"],
+    bullets: [
+      "Precision Finding with Ultra Wideband.",
+      "Water and dust resistant.",
+      "Replaceable battery lasts over a year.",
+      "Track with the Find My network.",
+    ],
+    watchTarget: 79,
   },
 ];
+
+export function featuredById(id: string): FeaturedProduct | undefined {
+  return FEATURED_PRODUCTS.find((f) => f.id === id);
+}

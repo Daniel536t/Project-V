@@ -8,6 +8,11 @@
 //   - When the template changes, the old selector genuinely stops matching —
 //     that is the "break" the demo hinges on.
 //
+// The `products` table holds ONE row: the ACTIVE product (what the storefront
+// is currently showing and what the scraper targets). Selecting any featured
+// product rewrites that row, so "watch any product" is real — same single
+// source of truth, just pointed at a different product.
+//
 // Three DOM templates (A/B/C) render the SAME product data but as three
 // deliberate, complete redesigns of a white, Apple-style store page, so a
 // selector learned against one template is stale against another.
@@ -20,7 +25,11 @@
 
 import { getPool } from "./db";
 import { emitLog, emitStore, type ProductState } from "./stream";
-import { PRODUCT_ID, PRODUCT_IMAGES } from "./store-shared";
+import {
+  FEATURED_PRODUCTS,
+  featuredById,
+  PRODUCT_IMAGES,
+} from "./store-shared";
 export { PRODUCT_ID, PRODUCT_IMAGES, PRODUCT_NAME } from "./store-shared";
 
 export interface ProductRow {
@@ -81,13 +90,31 @@ export function toState(p: ProductRow): ProductState {
   };
 }
 
+// There is exactly one active product row.
 export async function getProduct(): Promise<ProductRow> {
   const { rows } = await getPool().query<ProductRow>(
-    `SELECT * FROM products WHERE id = $1`,
-    [PRODUCT_ID],
+    `SELECT * FROM products ORDER BY id LIMIT 1`,
   );
-  if (!rows[0]) throw new Error(`Product ${PRODUCT_ID} not found`);
+  if (!rows[0]) throw new Error(`No active product — seed the products table`);
   return rows[0];
+}
+
+/** Point the store at a featured product (one row, rewritten). */
+export async function selectProduct(id: string): Promise<ProductRow> {
+  const meta = featuredById(id);
+  if (!meta) throw new Error(`Unknown product: ${id}`);
+
+  await getPool().query(`DELETE FROM products`);
+  await getPool().query(
+    `INSERT INTO products (id, name, price, in_stock, template, bot_detection, stock_level)
+     VALUES ($1, $2, $3, true, 'A', false, 3)`,
+    [meta.id, meta.name, meta.price],
+  );
+
+  const product = await getProduct();
+  emitStore(toState(product));
+  emitLog("info", `Store product selected → ${product.name} · $${Number(product.price)}`);
+  return product;
 }
 
 export async function updateProduct(
@@ -156,8 +183,6 @@ a:hover{text-decoration:underline}
 .wrap{max-width:1060px;margin:0 auto}
 .grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:40px;margin-top:14px}
 .gallery{display:flex;gap:12px;align-items:flex-start}
-.thumbs{display:flex;flex-direction:column;gap:9px}
-.thumbs img{width:56px;height:56px;object-fit:cover;border:1px solid #e8e8ed;border-radius:10px;cursor:pointer}
 .main-img{flex:1;background:#f5f5f7;border-radius:16px;display:flex;align-items:center;justify-content:center;padding:18px;min-height:320px}
 .main-img img{max-width:100%;max-height:360px;object-fit:contain}
 .title{font-size:30px;font-weight:700;letter-spacing:-.5px;line-height:1.1}
@@ -175,9 +200,6 @@ a:hover{text-decoration:underline}
 .colors{display:flex;gap:9px;align-items:center}
 .color{width:24px;height:24px;border-radius:50%;border:1px solid #d2d2d7;cursor:pointer}
 .color.on{box-shadow:0 0 0 2px #0071e3,0 0 0 4px #fff,0 0 0 5px #0071e3}
-.storage{display:flex;gap:8px;flex-wrap:wrap}
-.storage-btn{border:1px solid #d2d2d7;background:#fff;border-radius:10px;padding:8px 16px;font-size:13px;cursor:pointer;font-weight:500}
-.storage-btn.on{border-color:#0071e3;box-shadow:inset 0 0 0 1px #0071e3;color:#0071e3}
 .bullets{margin:8px 0 0 18px;font-size:13.5px;line-height:1.7}
 .bullets li{margin-bottom:5px}
 .cta{display:block;width:100%;text-align:center;border-radius:12px;padding:12px;font-size:15px;font-weight:600;cursor:pointer;margin-top:10px;border:1px solid transparent}
@@ -202,7 +224,6 @@ a:hover{text-decoration:underline}
 .rail h3{font-size:15px;margin-bottom:10px}
 .mini{display:flex;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid #e8e8ed}
 .mini:last-of-type{border-bottom:0}
-.mini img{width:46px;height:46px;object-fit:cover;border-radius:8px;border:1px solid #e8e8ed}
 .mini .n{font-size:12.5px;line-height:1.3;color:#1d1d1f}
 .mini .p{font-size:12.5px;font-weight:600;margin-top:2px}
 .soldby{font-size:12px;color:#6e6e73;margin-top:12px;line-height:1.7}
@@ -214,9 +235,6 @@ a:hover{text-decoration:underline}
 .panel h4{margin:14px 0 5px;font-size:14px;color:#1d1d1f}
 .panel ul{margin:6px 0 0 18px}
 .panel ul li{margin-bottom:4px}
-.table{width:100%;border-collapse:collapse;font-size:13px}
-.table td{border-bottom:1px solid #e8e8ed;padding:8px 10px}
-.table td:first-child{color:#6e6e73;width:40%}
 .reviews{background:#f5f5f7;border-radius:16px;padding:22px 24px;margin-top:24px}
 .rgrid{display:grid;grid-template-columns:minmax(0,260px) minmax(0,1fr);gap:26px}
 .rsummary h2{font-size:17px;margin-bottom:10px}
@@ -255,14 +273,8 @@ function footerHtml(): string {
   return `<footer class="footer">aperture · Apple &amp; more · Free delivery · 30-day returns · © 2026</footer>`;
 }
 
-function galleryHtml(): string {
-  const thumbs = PRODUCT_IMAGES.gallery
-    .map((u) => `<img src="${u}" alt="${PRODUCT_IMAGES.alt}">`)
-    .join("");
-  return `<div class="gallery">
-  <div class="thumbs">${thumbs}</div>
-  <div class="main-img"><img src="${PRODUCT_IMAGES.main}" alt="${PRODUCT_IMAGES.alt}"></div>
-</div>`;
+function galleryHtml(image: string, alt: string): string {
+  return `<div class="gallery"><div class="main-img"><img src="${image}" alt="${alt}"></div></div>`;
 }
 
 function urgencyHtml(p: ProductRow): string {
@@ -273,24 +285,15 @@ function urgencyHtml(p: ProductRow): string {
     : `<div class="urgency ok">In stock — ready to ship.</div>`;
 }
 
-function colorsHtml(): string {
-  return `<div class="lbl">Finish</div>
-<div class="colors">
-  <span class="color on" style="background:#b8b2a6" title="Natural Titanium"></span>
-  <span class="color" style="background:#3a4a63" title="Blue Titanium"></span>
-  <span class="color" style="background:#d9d4c9" title="White Titanium"></span>
-  <span class="color" style="background:#2c2c2e" title="Black Titanium"></span>
-</div>`;
+function colorsHtml(colors: string[]): string {
+  const dots = colors
+    .map((c, i) => `<span class="color${i === 0 ? " on" : ""}" style="background:${c}"></span>`)
+    .join("");
+  return `<div class="lbl">Color</div><div class="colors">${dots}</div>`;
 }
 
-function storageHtml(): string {
-  return `<div class="lbl">Storage</div>
-<div class="storage">
-  <span class="storage-btn on">128GB</span>
-  <span class="storage-btn">256GB</span>
-  <span class="storage-btn">512GB</span>
-  <span class="storage-btn">1TB</span>
-</div>`;
+function bulletsHtml(bullets: string[]): string {
+  return `<ul class="bullets">${bullets.map((b) => `<li>${b}</li>`).join("")}</ul>`;
 }
 
 function reviewsHtml(compact: boolean): string {
@@ -312,7 +315,7 @@ function reviewsHtml(compact: boolean): string {
   const cards = `
     <div class="rcard">
       <div class="rhead"><span class="rname">Marcus T.</span><span class="rstars">★★★★★</span><span class="rdate">Reviewed Aug 14, 2026</span><span class="badge-vp">✓ Verified purchase</span></div>
-      <p class="rtext">Titanium feels incredible and the camera is a huge step up. Battery easily lasts me all day.</p>
+      <p class="rtext">Build quality is excellent and it's a big step up from my last one. Lasts all day, no complaints.</p>
       <div class="rvote">312 people found this helpful</div>
     </div>
     <div class="rcard">
@@ -322,7 +325,7 @@ function reviewsHtml(compact: boolean): string {
     </div>
     <div class="rcard">
       <div class="rhead"><span class="rname">Danny R.</span><span class="rstars">★★★★☆</span><span class="rdate">Reviewed Jul 29, 2026</span><span class="badge-vp">✓ Verified purchase</span></div>
-      <p class="rtext">USB-C finally. Action button is a nice touch. Gave it four stars only because the box arrived a bit scuffed.</p>
+      <p class="rtext">Exactly as described, fast shipping. Four stars only because the box arrived a bit scuffed.</p>
       <div class="rvote">118 people found this helpful</div>
     </div>`;
   return `<section class="reviews">
@@ -340,6 +343,11 @@ function reviewsHtml(compact: boolean): string {
 }
 
 export function renderStoreHtml(p: ProductRow): string {
+  const meta = featuredById(p.id) ?? FEATURED_PRODUCTS[0];
+  const image = meta.image ?? PRODUCT_IMAGES.main;
+  const alt = meta.name ?? p.name;
+  const bullets = meta.bullets ?? [];
+
   const priceNum = Number(p.price);
   const price = `$${priceNum.toFixed(2)}`;
   const stock = p.in_stock ? "In Stock" : "Out of Stock";
@@ -353,7 +361,7 @@ export function renderStoreHtml(p: ProductRow): string {
           "@context": "https://schema.org",
           "@type": "Product",
           name: p.name,
-          image: PRODUCT_IMAGES.main,
+          image,
           offers: {
             "@type": "Offer",
             price: String(p.price),
@@ -370,25 +378,19 @@ export function renderStoreHtml(p: ProductRow): string {
   if (p.template === "A") {
     return `${head(p.name)}
 ${headerHtml()}
-<div class="crumb">Store › iPhone › <b>${p.name}</b></div>
+<div class="crumb">Store › <b>${p.name}</b></div>
 <main class="page wrap">
   <div class="grid2">
-    ${galleryHtml()}
+    ${galleryHtml(image, alt)}
     <div class="product-container">
       <h1 class="title">${p.name}</h1>
-      <p class="tagline">Titanium. So strong. So light. Pro.</p>
+      <p class="tagline">${meta.tagline}</p>
       <div class="divider"></div>
       <div class="money"><span class="price">${price}</span><span class="compare">${compare}</span><span class="save">Save ${savePct}%</span></div>
       <span class="stock${p.in_stock ? "" : " out"}">${stock}</span>
       ${urgencyHtml(p)}
-      ${colorsHtml()}
-      ${storageHtml()}
-      <ul class="bullets">
-        <li>A17 Pro chip with a 6-core GPU for console-class gaming.</li>
-        <li>Aerospace-grade titanium — lightest Pro model ever.</li>
-        <li>48MP Pro camera system with up to 3x telephoto.</li>
-        <li>USB-C connector and all-day battery life.</li>
-      </ul>
+      ${colorsHtml(meta.colors)}
+      ${bulletsHtml(bullets)}
       <button class="cta cta-blue">Add to Bag</button>
       <button class="cta cta-ghost">Buy</button>
       <div class="delivery"><b>Free delivery</b> — in stock.<br>Ships within 24 hours · 30-day returns.</div>
@@ -404,10 +406,10 @@ ${footerHtml()}
   if (p.template === "B") {
     return `${head(p.name)}
 ${headerHtml()}
-<div class="hero"><img src="${PRODUCT_IMAGES.main}" alt="${PRODUCT_IMAGES.alt}"></div>
+<div class="hero"><img src="${image}" alt="${alt}"></div>
 <main class="center pricing-section">
   <h1 class="title">${p.name}</h1>
-  <p class="tagline">Titanium. So strong. So light. Pro.</p>
+  <p class="tagline">${meta.tagline}</p>
   <div class="money" style="justify-content:center;margin-top:16px">
     <span data-test="current-price" class="amount">${price}</span>
     <span class="compare">${compare}</span>
@@ -415,10 +417,8 @@ ${headerHtml()}
   </div>
   <div style="margin-top:6px"><span data-test="availability" class="avail" style="${p.in_stock ? "" : "color:#c00"}">${stock}</span></div>
   ${urgencyHtml(p)}
-  <div style="display:flex;justify-content:center;flex-wrap:wrap">${colorsHtml()}${storageHtml()}</div>
-  <div class="specs">
-    <div class="spec">A17 Pro chip</div><div class="spec">Titanium design</div><div class="spec">48MP camera</div><div class="spec">USB-C</div>
-  </div>
+  <div style="display:flex;justify-content:center;flex-wrap:wrap">${colorsHtml(meta.colors)}</div>
+  <div class="specs">${bullets.slice(0, 4).map((b) => `<div class="spec">${b}</div>`).join("")}</div>
   <button class="cta cta-blue">Add to Bag</button>
   <button class="cta cta-ghost">Buy</button>
   <p class="tagline" style="margin-top:12px">Free delivery · 30-day returns · 1-year warranty</p>
@@ -432,51 +432,34 @@ ${footerHtml()}
   return `${head(p.name)}
 ${jsonLd}
 ${headerHtml()}
-<div class="crumb">Store › iPhone › <b>${p.name}</b></div>
+<div class="crumb">Store › <b>${p.name}</b></div>
 <main class="page wrap">
   <div class="grid3">
-    ${galleryHtml()}
+    ${galleryHtml(image, alt)}
     <div class="buybox">
       <h1 class="title">${p.name}</h1>
-      <p class="tagline">Titanium. So strong. So light. Pro.</p>
+      <p class="tagline">${meta.tagline}</p>
       <div class="divider"></div>
       <div class="money"><span class="display-price">${price}</span><span class="compare">${compare}</span><span class="save">Save ${savePct}%</span></div>
       <div style="margin:6px 0"><span class="availability-badge pill ${p.in_stock ? "pill-green" : "pill-red"}">${stock}</span></div>
       ${urgencyHtml(p)}
-      <ul class="bullets">
-        <li>The most advanced Pro iPhone ever — titanium, A17 Pro, USB-C.</li>
-        <li>48MP Pro camera with ProRAW and 4K ProRes.</li>
-        <li>Action button, Dynamic Island, all-day battery.</li>
-      </ul>
-      ${colorsHtml()}
-      ${storageHtml()}
+      ${bulletsHtml(bullets.slice(0, 4))}
+      ${colorsHtml(meta.colors)}
       <button class="cta cta-blue">Add to Bag</button>
       <button class="cta cta-ghost">Buy</button>
     </div>
     <aside class="rail">
-      <h3>Why iPhone</h3>
-      <div class="mini"><img src="${PRODUCT_IMAGES.gallery[1]}" alt="trade-in"><div><div class="n">Apple Trade In</div><div class="p">Save up to $630</div></div></div>
-      <div class="mini"><img src="${PRODUCT_IMAGES.gallery[3]}" alt="applecare"><div><div class="n">AppleCare+</div><div class="p">From $9.99/mo.</div></div></div>
+      <h3>Why aperture</h3>
+      <div class="mini"><div><div class="n">Free delivery</div><div class="p">On every order</div></div></div>
+      <div class="mini"><div><div class="n">30-day returns</div><div class="p">No questions asked</div></div></div>
+      <div class="mini"><div><div class="n">1-year warranty</div><div class="p">Included</div></div></div>
       <div class="soldby"><b>Sold by</b> <a href="#">aperture</a> · 100% positive feedback<br>Free returns · 30 days<br>In stock — ships within 24 hours</div>
     </aside>
   </div>
-  <div class="tabs"><span class="tab on">Overview</span><span class="tab">Tech Specs</span><span class="tab">Shipping &amp; Returns</span></div>
+  <div class="tabs"><span class="tab on">Overview</span><span class="tab">Shipping &amp; Returns</span></div>
   <div class="panel">
     <h4>Overview</h4>
-    <ul>
-      <li>Titanium design — the lightest, strongest Pro iPhone ever.</li>
-      <li>A17 Pro chip brings console-class gaming to a phone.</li>
-      <li>48MP Pro camera system with up to 3x optical zoom.</li>
-      <li>USB-C, Action button, and all-day battery life.</li>
-    </ul>
-    <h4>Tech Specs</h4>
-    <table class="table">
-      <tr><td>Display</td><td>6.1" Super Retina XDR · ProMotion</td></tr>
-      <tr><td>Chip</td><td>A17 Pro</td></tr>
-      <tr><td>Camera</td><td>48MP main · 3x telephoto · 12MP ultrawide</td></tr>
-      <tr><td>Connector</td><td>USB-C</td></tr>
-      <tr><td>Battery</td><td>Up to 29 hours video playback</td></tr>
-    </table>
+    ${bulletsHtml(bullets)}
     <h4>Shipping &amp; Returns</h4>
     <ul>
       <li>Free delivery, in stock.</li>

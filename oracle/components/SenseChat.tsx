@@ -124,6 +124,19 @@ export default function SenseChat({
     };
   }, []);
 
+  // Quick-watch events from the storefront (Watch buttons on product cards).
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const d = (e as CustomEvent).detail as { message?: string; watches?: Watch[] } | undefined;
+      if (d?.message) {
+        setMessages((prev) => [...prev, { role: "agent", text: d.message!, ts: Date.now() }]);
+      }
+      if (Array.isArray(d?.watches)) setWatches(d.watches);
+    };
+    window.addEventListener("sense:watch-created", handler);
+    return () => window.removeEventListener("sense:watch-created", handler);
+  }, []);
+
   async function checkNow(id: string) {
     try {
       await fetch(`/api/watches/${id}/scrape`, { method: "POST" });

@@ -7,10 +7,10 @@ SENSE watches a page for a user-defined condition ("alert me when this drops bel
 The demo is a single screen, split in two:
 
 - **LEFT — SENSE**: an Apple-style chat — macOS sidebar (New Chat, Chats, Tools, profile) plus a conversation pane with quick-action cards and an iOS-style composer.
-- **RIGHT — STORE**: an Apple-style storefront (nav, "New season. Elevated." hero, benefits, a five-product grid) that opens into an **iPhone 15 Pro** product page. A floating **"⚙ Break This Site"** button opens demo controls: redesign the page, move the price, toggle stock, toggle bot detection.
+- **RIGHT — STORE**: an Apple-style storefront (nav, "New season. Elevated." hero, benefits, a five-product grid). Every product card has a **Watch** button — watch any product, not just the iPhone — which selects it into the live store and opens its product page. A floating **"⚙ Break This Site"** button opens demo controls: redesign the page, move the price, toggle stock, toggle bot detection.
 - **BOTTOM — TERMINAL**: the live collector log, styled as a dark macOS terminal — every scrape, break, heal, and alert streams here via SSE.
 
-**The rule above all rules: no simulations.** The store's price lives in a real `products` table in PostgreSQL. The store UI fetches it from `/api/products/iphone-15-pro` and subscribes to `/api/store/stream` (SSE). The scraper fetches the store's rendered HTML (`/api/store/html`) and extracts the price with a real CSS selector. When the price changes in the popup, the database changes, the store UI updates, and the next real scrape returns the new price.
+**The rule above all rules: no simulations.** The store's price lives in a real `products` table in PostgreSQL. The store UI fetches it from `/api/products/active` and subscribes to `/api/store/stream` (SSE). The scraper fetches the store's rendered HTML (`/api/store/html`) and extracts the price with a real CSS selector. When the price changes in the popup, the database changes, the store UI updates, and the next real scrape returns the new price.
 
 ---
 
@@ -114,7 +114,8 @@ A judge can do all of it unaided — every control is on screen.
 - `GET /api/watches/stream` — SSE alert stream
 - `GET /api/store/stream` — SSE store state stream
 - `POST /api/store/admin` — redesign | set_price | set_stock | set_bot_detection
-- `GET /api/products/iphone-15-pro` — store state (JSON)
+- `GET /api/products/active` — store state (JSON)
+- `POST /api/watches/quick` — select a featured product + create a watch (the Watch buttons)
 - `GET /api/store/html` — store HTML representation (scrape target)
 - `GET /api/ledger` — the Scar Log
 

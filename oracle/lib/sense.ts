@@ -7,7 +7,7 @@
 // intent (the same thing Bright Data's heal does), log a scar, and re-scrape.
 
 import { getWatch, getWatches, updateWatch, createWatch, logScrape, type WatchRow } from "./db";
-import { getProduct, TEMPLATES, PRODUCT_ID } from "./store";
+import { getProduct, TEMPLATES } from "./store";
 import { scrapeStore, parsePrice, type ExtractField } from "./scraper";
 import { emitAlert, emitLog } from "./stream";
 import { healWatch, STORE_COLLECTOR_ID } from "./heal";
@@ -126,7 +126,7 @@ export async function runScrapePass(watchId: string): Promise<RunResult> {
   const product = await getProduct();
   const collectorId = watch.collector_id ?? "c_unknown";
 
-  emitLog("info", `Scraping ${PRODUCT_ID}…`);
+  emitLog("info", `Scraping ${product.name}…`);
   await updateWatch(watchId, { status: "checking" });
 
   let outcome = await scrapeStore(field, watch.selector);
