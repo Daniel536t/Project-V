@@ -259,6 +259,16 @@ export default function SenseChat({
           <span className="text-[15px]">↗</span>
         </button>
 
+        <a
+          href="/upload"
+          className="mt-2.5 flex items-center justify-between rounded-[10px] border border-[#0071e3]/30 bg-white px-3 py-2.5 text-[14px] font-medium text-[#0071e3] transition hover:bg-[#f0f7ff]"
+        >
+          <span className="flex items-center gap-2">
+            <span className="text-[15px] leading-none">📷</span> Upload vision
+          </span>
+          <span className="text-[13px]">↑</span>
+        </a>
+
         <div className="mt-5 px-1 text-[13px] text-[#6d6d72]">Chats</div>
         <div className="mt-1 flex flex-col gap-0.5">
           {watches.length === 0 ? (

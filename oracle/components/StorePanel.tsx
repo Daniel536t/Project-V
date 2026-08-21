@@ -253,6 +253,13 @@ function StoreNav() {
         </span>
       ))}
       <div className="ml-auto flex items-center gap-5 text-[16px] text-[#1d1d1f]">
+        <a
+          href="/upload"
+          title="Upload a design screenshot"
+          className="cursor-pointer text-[15px] leading-none transition-colors hover:text-[#0071e3]"
+        >
+          📷
+        </a>
         <span className="cursor-pointer transition-colors hover:text-[#0071e3]">⌕</span>
         <span className="cursor-pointer transition-colors hover:text-[#0071e3]">▢</span>
       </div>
