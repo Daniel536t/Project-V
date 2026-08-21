@@ -36,6 +36,15 @@ export async function POST(req: Request) {
       return NextResponse.json(toState(updated));
     }
 
+    if (action === "set_stock_level") {
+      const level = Number(body.value);
+      if (!Number.isFinite(level) || level < 0) {
+        return NextResponse.json({ error: "value must be a non-negative number" }, { status: 400 });
+      }
+      const updated = await updateProduct({ stock_level: Math.round(level) });
+      return NextResponse.json(toState(updated));
+    }
+
     if (action === "set_bot_detection") {
       const updated = await updateProduct({ bot_detection: Boolean(body.value) });
       return NextResponse.json(toState(updated));

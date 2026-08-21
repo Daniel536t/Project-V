@@ -15,6 +15,7 @@ interface ProductState {
   in_stock: boolean;
   template: string;
   bot_detection: boolean;
+  stock_level: number;
 }
 
 export default function Home() {

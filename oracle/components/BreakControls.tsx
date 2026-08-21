@@ -10,6 +10,7 @@ interface ProductState {
   in_stock: boolean;
   template: string;
   bot_detection: boolean;
+  stock_level: number;
 }
 
 const TEMPLATE_LABEL: Record<string, string> = {
@@ -140,6 +141,34 @@ export default function BreakControls({
                 }`}
               />
             </button>
+          </div>
+
+          {/* Stock level */}
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-sense-dim">
+              Stock Level
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() =>
+                  post("set_stock_level", Math.max(0, (product.stock_level ?? 3) - 1))
+                }
+                disabled={working}
+                className="sense-press h-7 w-7 rounded-lg border border-white/[0.08] font-mono text-sm text-sense-text transition hover:border-white/[0.2] disabled:opacity-50"
+              >
+                −
+              </button>
+              <span className="w-6 text-center font-mono text-[13px] font-semibold text-sense-electric">
+                {product.stock_level ?? 3}
+              </span>
+              <button
+                onClick={() => post("set_stock_level", (product.stock_level ?? 3) + 1)}
+                disabled={working}
+                className="sense-press h-7 w-7 rounded-lg border border-white/[0.08] font-mono text-sm text-sense-text transition hover:border-white/[0.2] disabled:opacity-50"
+              >
+                +
+              </button>
+            </div>
           </div>
 
           {/* Bot detection */}

@@ -78,11 +78,12 @@ CREATE TABLE IF NOT EXISTS products (
   price NUMERIC NOT NULL,
   in_stock BOOLEAN NOT NULL DEFAULT true,
   template TEXT NOT NULL DEFAULT 'A',
-  bot_detection BOOLEAN NOT NULL DEFAULT false
+  bot_detection BOOLEAN NOT NULL DEFAULT false,
+  stock_level INTEGER NOT NULL DEFAULT 3
 );
 
-INSERT INTO products (id, name, price, in_stock, template, bot_detection)
-VALUES ('nike-dunk-panda', 'Nike Dunk Low ''Panda''', 139, true, 'A', false)
+INSERT INTO products (id, name, price, in_stock, template, bot_detection, stock_level)
+VALUES ('nike-dunk-panda', 'Nike Dunk Low ''Panda''', 139, true, 'A', false, 3)
 ON CONFLICT (id) DO NOTHING;
 
 -- Scrape history (one row per real scrape per watch)

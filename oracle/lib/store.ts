@@ -29,6 +29,7 @@ export interface ProductRow {
   in_stock: boolean;
   template: string;
   bot_detection: boolean;
+  stock_level: number;
 }
 
 export interface TemplateDef {
@@ -75,6 +76,7 @@ export function toState(p: ProductRow): ProductState {
     in_stock: p.in_stock,
     template: p.template,
     bot_detection: p.bot_detection,
+    stock_level: Number(p.stock_level ?? 3),
   };
 }
 
@@ -88,20 +90,21 @@ export async function getProduct(): Promise<ProductRow> {
 }
 
 export async function updateProduct(
-  patch: Partial<Pick<ProductRow, "price" | "in_stock" | "template" | "bot_detection">>,
+  patch: Partial<Pick<ProductRow, "price" | "in_stock" | "template" | "bot_detection" | "stock_level">>,
 ): Promise<ProductRow> {
   const current = await getProduct();
   const next: ProductRow = {
     ...current,
     ...patch,
     price: patch.price != null ? Number(patch.price) : current.price,
+    stock_level: patch.stock_level != null ? Math.max(0, Number(patch.stock_level)) : Number(current.stock_level ?? 3),
   };
 
   await getPool().query(
     `UPDATE products
-     SET price = $1, in_stock = $2, template = $3, bot_detection = $4
-     WHERE id = $5`,
-    [next.price, next.in_stock, next.template, next.bot_detection, next.id],
+     SET price = $1, in_stock = $2, template = $3, bot_detection = $4, stock_level = $5
+     WHERE id = $6`,
+    [next.price, next.in_stock, next.template, next.bot_detection, next.stock_level, next.id],
   );
 
   const state = toState(next);
@@ -204,7 +207,30 @@ a{color:#007185;text-decoration:none}
 .table td{border-bottom:1px solid #e7e9ec;padding:7px 10px}
 .table td:first-child{color:#565959;width:38%}
 .footer{background:#232f3e;color:#cdd;text-align:center;padding:13px;font-size:11.5px;margin-top:22px}
-@media(max-width:900px){.grid2,.grid3{grid-template-columns:1fr}.searchbar{display:none}}
+.urgency{color:#b12704;font-size:12.5px;margin:6px 0 0;font-weight:600}
+.sizes{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.sizes .lbl{width:100%;font-size:12px;color:#565959;margin-bottom:2px}
+.size{border:1px solid #d5d9d9;background:#fff;border-radius:8px;padding:6px 12px;font-size:12.5px;cursor:pointer}
+.size.on{border-color:#0f1111;background:#0f1111;color:#fff}
+.reviews{background:#fff;border-radius:10px;padding:20px 22px;margin-top:22px}
+.rgrid{display:grid;grid-template-columns:minmax(0,260px) minmax(0,1fr);gap:24px}
+.rsummary h2{font-size:16px;margin-bottom:10px}
+.rscore{font-size:30px;font-weight:700}
+.rstars{color:#e67c00;font-size:14px}
+.rmeta{font-size:12px;color:#565959;margin-top:2px}
+.rbar{height:8px;border-radius:4px;background:#e7e9ec;overflow:hidden;flex:1}
+.rfill{height:100%;background:#e67c00;border-radius:4px}
+.rrow{display:flex;align-items:center;gap:8px;font-size:12px;color:#565959;margin-top:5px}
+.rcard{border-bottom:1px solid #e7e9ec;padding:12px 0}
+.rcard:last-child{border-bottom:0}
+.rhead{display:flex;align-items:center;gap:8px;font-size:13px;flex-wrap:wrap}
+.rname{font-weight:600}
+.rdate{font-size:11px;color:#565959}
+.badge-vp{background:#e8f7ee;color:#067647;font-size:10px;padding:2px 7px;border-radius:999px}
+.rtext{font-size:13px;margin-top:6px;line-height:1.65}
+.rvote{font-size:11px;color:#565959;margin-top:4px}
+.rquote{font-size:13px;font-style:italic;color:#333;margin-top:14px;padding:12px 14px;background:#f7f7f7;border-radius:8px}
+@media(max-width:900px){.grid2,.grid3,.rgrid{grid-template-columns:1fr}.searchbar{display:none}}
 `;
 
 function headerFull(): string {
@@ -236,6 +262,66 @@ function galleryHtml(): string {
   <div class="thumbs">${thumbs}</div>
   <div class="main-img"><img src="${PRODUCT_IMAGES.main}" alt="${PRODUCT_IMAGES.alt}"></div>
 </div>`;
+}
+
+function urgencyHtml(p: ProductRow): string {
+  if (!p.in_stock) return `<div class="urgency">Currently unavailable.</div>`;
+  const level = Number(p.stock_level ?? 3);
+  return level <= 5
+    ? `<div class="urgency">Only ${level} left in stock — order soon.</div>`
+    : `<div class="urgency" style="color:#007600">In stock.</div>`;
+}
+
+function sizesHtml(centered: boolean): string {
+  return `<div class="sizes"${centered ? ' style="justify-content:center"' : ""}><span class="lbl">Size:</span>
+    <span class="size on">US 9</span><span class="size">9.5</span><span class="size">10</span><span class="size">10.5</span><span class="size">11</span><span class="size">11.5</span><span class="size">12</span>
+  </div>`;
+}
+
+function reviewsHtml(compact: boolean): string {
+  if (compact) {
+    return `<div class="reviews"><p class="rquote">★★★★★ &ldquo;Had SENSE watch this page for me — got the alert, copped instantly.&rdquo; — Priya S. · Verified purchase</p></div>`;
+  }
+  const breakdown = [
+    [5, 78],
+    [4, 15],
+    [3, 4],
+    [2, 1],
+    [1, 2],
+  ]
+    .map(
+      ([s, pct]) =>
+        `<div class="rrow"><span>${s}★</span><div class="rbar"><div class="rfill" style="width:${pct}%"></div></div><span>${pct}%</span></div>`,
+    )
+    .join("");
+  const cards = `
+    <div class="rcard">
+      <div class="rhead"><span class="rname">Marcus T.</span><span class="rstars">★★★★★</span><span class="rdate">Reviewed Aug 12, 2026</span><span class="badge-vp">✓ Verified purchase</span></div>
+      <p class="rtext">Finally copped a Panda pair. Leather is clean and goes with everything. Runs true to size for me (US 9.5).</p>
+      <div class="rvote">214 people found this helpful</div>
+    </div>
+    <div class="rcard">
+      <div class="rhead"><span class="rname">Priya S.</span><span class="rstars">★★★★★</span><span class="rdate">Reviewed Aug 3, 2026</span><span class="badge-vp">✓ Verified purchase</span></div>
+      <p class="rtext">Hype is real — these sell out in minutes. I had SENSE watching the page and it pinged me the second they dropped. Zero stress.</p>
+      <div class="rvote">187 people found this helpful</div>
+    </div>
+    <div class="rcard">
+      <div class="rhead"><span class="rname">Danny R.</span><span class="rstars">★★★★☆</span><span class="rdate">Reviewed Jul 28, 2026</span><span class="badge-vp">✓ Verified purchase</span></div>
+      <p class="rtext">Colorway is unbeatable and they ship fast. Box arrived slightly dented, so four stars — the shoe itself is perfect.</p>
+      <div class="rvote">96 people found this helpful</div>
+    </div>`;
+  return `<section class="reviews">
+  <div class="rgrid">
+    <div class="rsummary">
+      <h2>Customer reviews</h2>
+      <div class="rscore">4.8</div>
+      <div class="rstars">★★★★★</div>
+      <div class="rmeta">1,247 global ratings</div>
+      <div style="margin-top:10px">${breakdown}</div>
+    </div>
+    <div>${cards}</div>
+  </div>
+</section>`;
 }
 
 export function renderStoreHtml(p: ProductRow): string {
@@ -280,6 +366,7 @@ ${headerFull()}
       <div class="divider"></div>
       <div class="money"><span class="price">${price}</span><span class="compare">${compare}</span><span class="save">Save ${savePct}%</span></div>
       <span class="stock${p.in_stock ? "" : " out"}">${stock}</span>
+      ${urgencyHtml(p)}
       <ul class="bullets">
         <li>Classic &quot;Panda&quot; colorway — clean white leather with black Swoosh.</li>
         <li>Padded high-top collar with cushioned foam insole for all-day comfort.</li>
@@ -287,10 +374,12 @@ ${headerFull()}
         <li>Solid rubber cupsole with pivot-circle traction.</li>
         <li>Includes replacement laces, box and dust bag.</li>
       </ul>
+      ${sizesHtml(false)}
       <button class="cta cta-yellow">Add to Cart</button>
       <button class="cta cta-orange">Buy Now</button>
     </div>
   </div>
+  ${reviewsHtml(false)}
 </main>
 ${footerHtml()}
 </body></html>`;
@@ -311,12 +400,15 @@ ${headerMinimal()}
     <span class="save">Save ${savePct}%</span>
   </div>
   <div class="meta" style="margin-top:6px"><span data-test="availability" class="avail" style="${p.in_stock ? "" : "color:#b12704"}">${stock}</span></div>
+  ${urgencyHtml(p)}
+  ${sizesHtml(true)}
   <div class="specs">
     <div>Leather upper</div><div>Black Swoosh</div><div>Rubber outsole</div><div>Padded collar</div>
   </div>
   <button class="cta cta-yellow">Add to Cart</button>
   <button class="cta cta-orange">Buy Now</button>
   <p class="meta" style="margin-top:10px">Free 2-day shipping · 30-day returns · 1-year warranty</p>
+  ${reviewsHtml(true)}
 </main>
 ${footerHtml()}
 </body></html>`;
@@ -336,12 +428,14 @@ ${headerFull()}
       <div class="divider"></div>
       <div class="money"><span class="display-price">${price}</span><span class="compare">${compare}</span><span class="save">Save ${savePct}%</span></div>
       <div class="meta" style="margin:6px 0"><span class="availability-badge pill ${p.in_stock ? "pill-green" : "pill-red"}">${stock}</span></div>
+      ${urgencyHtml(p)}
       <ul class="bullets">
         <li>The most-wanted colorway of the Dunk line — sells out in minutes.</li>
         <li>Genuine leather upper with perforated toe box.</li>
         <li>High-top silhouette with padded collar and cushioned insole.</li>
         <li>Solid rubber outsole with classic pivot-circle traction.</li>
       </ul>
+      ${sizesHtml(false)}
       <button class="cta cta-yellow">Add to Cart</button>
       <button class="cta cta-orange">Buy Now</button>
     </div>
@@ -379,6 +473,7 @@ ${headerFull()}
       <li>1-year manufacturer warranty included.</li>
     </ul>
   </div>
+  ${reviewsHtml(false)}
 </main>
 ${footerHtml()}
 </body></html>`;
