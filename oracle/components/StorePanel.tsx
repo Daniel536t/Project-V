@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   FEATURED_PRODUCTS,
@@ -135,11 +135,7 @@ export default function StorePanel({
               exit={{ opacity: 0 }}
               transition={{ duration: 0.18 }}
             >
-              <Storefront
-                onShop={() => setView("product")}
-                onOpenProduct={() => setView("product")}
-                watching={Boolean(product)}
-              />
+              <Storefront onOpenProduct={() => setView("product")} />
             </motion.div>
           ) : (
             <motion.div
@@ -229,14 +225,16 @@ function StoreFooter() {
  * Storefront — hero + benefits + featured products
  * ------------------------------------------------------------------ */
 
-function Storefront({
-  onShop,
-  onOpenProduct,
-}: {
-  onShop: () => void;
-  onOpenProduct: () => void;
-  watching: boolean;
-}) {
+function Storefront({ onOpenProduct }: { onOpenProduct: () => void }) {
+  const featuredRef = useRef<HTMLDivElement>(null);
+  const [highlight, setHighlight] = useState(false);
+
+  const scrollToFeatured = () => {
+    featuredRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlight(true);
+    setTimeout(() => setHighlight(false), 1600);
+  };
+
   return (
     <div>
       {/* Heading */}
@@ -260,7 +258,7 @@ function Storefront({
               Explore the latest in tech, style, and everyday essentials.
             </p>
             <button
-              onClick={onShop}
+              onClick={scrollToFeatured}
               className="mt-5 rounded-full bg-[#0071e3] px-5 py-2 text-[13px] font-semibold text-white transition hover:bg-[#0077ed]"
             >
               Shop Now
@@ -310,7 +308,7 @@ function Storefront({
       </div>
 
       {/* Featured products */}
-      <div className="mx-6 mt-6">
+      <div ref={featuredRef} className="mx-6 mt-6 scroll-mt-24">
         <div className="mb-3 flex items-center justify-between">
           <h4 className="text-[17px] font-semibold">Featured Products</h4>
           <span className="cursor-pointer text-[12px] text-[#0066cc] hover:underline">
@@ -324,8 +322,12 @@ function Storefront({
               <button
                 key={p.id}
                 onClick={() => isWatched && onOpenProduct()}
-                className={`group relative rounded-[12px] border border-[#e4e4e6] bg-white p-3 text-left transition hover:shadow-md ${
+                className={`group relative rounded-[12px] border bg-white p-3 text-left transition hover:shadow-md ${
                   isWatched ? "cursor-pointer" : "cursor-default"
+                } ${
+                  highlight && isWatched
+                    ? "border-[#0071e3] ring-2 ring-[#0071e3] ring-offset-2"
+                    : "border-[#e4e4e6]"
                 }`}
               >
                 {p.tag && (
