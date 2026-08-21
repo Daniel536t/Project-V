@@ -54,13 +54,12 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-h1,
-h2,
-h3 {
-  font-family: "Bangers", cursive;
-  letter-spacing: 2px;
-  font-weight: 400;
-}
+/*
+ * Headings inherit the body font (Inter / SF Pro) by default. The Bangers
+ * display font is applied ONLY via explicit classes (.sense-logo,
+ * .sense-logo-light, .onomatopoeia, .comic-btn) — never globally — so the
+ * Apple-style SENSE/Store UI stays clean.
+ */
 
 ::selection {
   background: var(--spider-pink);

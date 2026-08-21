@@ -374,10 +374,10 @@ export default function SenseChat({
                 </svg>
               </div>
               <h1 className="mt-6 text-[28px] font-bold tracking-[-0.6px]">
-                Hi Daniel! How can I help you today?
+                Hi Daniel! 👋
               </h1>
               <div className="mt-1 text-[15px] text-[#6e6e73]">
-                I watch pages and tell you the moment they change.
+                How can I help you today?
               </div>
 
               <div className="mt-7 grid w-full max-w-[400px] grid-cols-2 gap-2.5">
