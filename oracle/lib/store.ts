@@ -8,11 +8,19 @@
 //   - When the template changes, the old selector genuinely stops matching —
 //     that is the "break" the demo hinges on.
 //
-// Three DOM templates (A/B/C) render the SAME product data but with different
-// markup, so a selector learned against one template is stale against another.
+// Three DOM templates (A/B/C) render the SAME product data but as three
+// deliberate, complete redesigns of a white, Amazon-style store page, so a
+// selector learned against one template is stale against another.
+//
+// NOTE on class names: the scraper's extractBySelector matches the LAST class
+// token of a selector (word-boundary regex), so the tokens `price` / `stock`
+// must appear on exactly ONE element per template — the real price/stock —
+// and never inside the shared <style> block.
 
 import { getPool } from "./db";
 import { emitLog, emitStore, type ProductState } from "./stream";
+export { PRODUCT_ID, PRODUCT_IMAGES, PRODUCT_NAME } from "./store-shared";
+import { PRODUCT_ID, PRODUCT_IMAGES } from "./store-shared";
 
 export interface ProductRow {
   id: string;
@@ -22,8 +30,6 @@ export interface ProductRow {
   template: string;
   bot_detection: boolean;
 }
-
-export const PRODUCT_ID = "sony-a7iv";
 
 export interface TemplateDef {
   key: string;
@@ -120,87 +126,259 @@ export async function updateProduct(
   return next;
 }
 
-/**
- * Server-rendered HTML representation of the store page. This is what the
- * scraper fetches (the same markup a human sees in the store panel). The price
- * and stock are embedded under the ACTIVE template's selectors only.
- */
+// ---------------------------------------------------------------------------
+// Server-rendered store page — a real, white, Amazon-style shop. This is what
+// the scraper fetches (the same markup a human sees in the store panel). The
+// price and stock live under the ACTIVE template's selectors only.
+// ---------------------------------------------------------------------------
+
+// Inline stylesheet. WARNING: must never contain `data-test=` attribute
+// selectors or class tokens `price`/`stock`/`display-price`/`availability-badge`
+// — the scraper scans this string and would mis-extract.
+const STYLE = `
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:#eaeded;color:#0f1111;line-height:1.45}
+a{color:#007185;text-decoration:none}
+.brand-bar{background:#131921;color:#fff;padding:9px 22px;display:flex;align-items:center;gap:16px}
+.brand{font-size:21px;font-weight:700;letter-spacing:.5px;white-space:nowrap}
+.brand b{color:#ff9900}
+.searchbar{flex:1;display:flex;max-width:620px;border-radius:6px;overflow:hidden;border:2px solid #febd69;background:#fff}
+.searchbar input{flex:1;border:0;padding:7px 12px;font-size:13px;outline:0;min-width:0}
+.searchbar button{background:#febd69;border:0;padding:0 16px;font-weight:600;cursor:pointer;font-size:13px}
+.nav{background:#232f3e;color:#fff;padding:6px 22px;font-size:12.5px;display:flex;gap:16px;flex-wrap:wrap}
+.nav span{cursor:pointer}
+.crumbs{font-size:12px;padding:12px 22px 0;color:#565959}
+.page{padding:12px 22px 34px}
+.grid2{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:26px;background:#fff;padding:22px;border-radius:10px;margin-top:14px}
+.gallery{display:flex;gap:10px}
+.thumbs{display:flex;flex-direction:column;gap:8px}
+.thumbs img{width:48px;height:48px;object-fit:cover;border:1px solid #d5d9d9;border-radius:4px;cursor:pointer}
+.main-img{flex:1;background:#fff;border:1px solid #e7e9ec;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:14px;min-height:280px}
+.main-img img{max-width:100%;max-height:330px;object-fit:contain}
+.title{font-size:21px;line-height:1.3;font-weight:400}
+.stars{color:#e67c00;font-size:13px;margin:6px 0 2px}
+.meta{font-size:12px;color:#565959;margin:6px 0}
+.divider{border-bottom:1px solid #e7e9ec;margin:10px 0}
+.money{display:flex;align-items:baseline;gap:8px;margin:8px 0;flex-wrap:wrap}
+.price{font-size:26px;font-weight:600}
+.compare{font-size:13px;color:#565959;text-decoration:line-through}
+.save{color:#cc0c39;font-size:13px;font-weight:600}
+.stock{color:#007600;font-size:14px;font-weight:600;display:block;margin:4px 0}
+.stock.out{color:#b12704}
+.bullets{margin:10px 0 0 18px;font-size:13px;line-height:1.7}
+.bullets li{margin-bottom:4px}
+.cta{width:100%;display:block;text-align:center;border-radius:20px;padding:9px;font-size:14px;font-weight:600;border:1px solid;cursor:pointer;margin-top:9px}
+.cta-yellow{background:#ffd814;border-color:#fcd200}
+.cta-yellow:hover{background:#f7ca00}
+.cta-orange{background:#ffa41c;border-color:#ff8f00}
+.cta-orange:hover{background:#fa8900}
+.specs{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:14px}
+.specs div{background:#f3f3f3;border:1px solid #e7e9ec;border-radius:8px;padding:9px 11px;font-size:12.5px}
+.hero{background:#f5f5f5;display:flex;align-items:center;justify-content:center;padding:28px 20px}
+.hero img{max-height:300px;max-width:100%;object-fit:contain}
+.center{max-width:640px;margin:0 auto;padding:24px 20px 36px;text-align:center}
+.tagline{color:#565959;font-size:14px;margin-top:4px}
+.amount{font-size:34px;font-weight:700}
+.avail{color:#007600;font-size:14px;font-weight:600}
+.pill{display:inline-block;border-radius:999px;padding:5px 14px;font-size:13px;font-weight:600}
+.pill-green{background:#e8f7ee;color:#067647}
+.pill-red{background:#fdecec;color:#b12704}
+.grid3{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr) minmax(0,3fr);gap:22px;background:#fff;padding:22px;border-radius:10px;margin-top:14px}
+.rail{border:1px solid #e7e9ec;border-radius:10px;padding:14px}
+.rail h3{font-size:14px;margin-bottom:8px}
+.mini{display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid #e7e9ec}
+.mini:last-of-type{border-bottom:0}
+.mini img{width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid #e7e9ec}
+.mini .n{font-size:12px;line-height:1.3;color:#0f1111}
+.mini .p{font-size:12px;font-weight:600;margin-top:2px}
+.soldby{font-size:12px;color:#565959;margin-top:10px;line-height:1.7}
+.soldby b{color:#0f1111}
+.tabs{display:flex;gap:4px;margin-top:22px;border-bottom:2px solid #e7e9ec}
+.tab{padding:9px 16px;font-size:13px;cursor:pointer;color:#565959;border-bottom:2px solid transparent;margin-bottom:-2px}
+.tab.on{color:#0f1111;border-bottom-color:#e67c00;font-weight:600}
+.panel{background:#fff;border-radius:0 0 10px 10px;padding:18px 22px;font-size:13px;line-height:1.7;color:#333}
+.panel h4{margin:12px 0 4px;font-size:13.5px;color:#0f1111}
+.panel ul{margin:6px 0 0 18px}
+.panel ul li{margin-bottom:3px}
+.table{width:100%;border-collapse:collapse;font-size:12.5px}
+.table td{border-bottom:1px solid #e7e9ec;padding:7px 10px}
+.table td:first-child{color:#565959;width:38%}
+.footer{background:#232f3e;color:#cdd;text-align:center;padding:13px;font-size:11.5px;margin-top:22px}
+@media(max-width:900px){.grid2,.grid3{grid-template-columns:1fr}.searchbar{display:none}}
+`;
+
+function headerFull(): string {
+  return `
+<header class="brand-bar">
+  <div class="brand">aperture<b>.</b></div>
+  <div class="searchbar"><input placeholder="Search cameras, lenses, accessories"><button>Search</button></div>
+</header>
+<nav class="nav"><span>All</span><span>Cameras</span><span>Lenses</span><span>Accessories</span><span>Deals</span><span>Support</span></nav>`;
+}
+
+function headerMinimal(): string {
+  return `
+<header class="brand-bar" style="justify-content:space-between">
+  <div class="brand">aperture<b>.</b></div>
+  <nav class="nav" style="background:transparent;padding:0"><span>Shop</span><span>Cameras</span><span>About</span></nav>
+</header>`;
+}
+
+function footerHtml(): string {
+  return `<footer class="footer">aperture · Camera &amp; Photo · Free 2-day shipping over $50 · 30-day returns · © 2026</footer>`;
+}
+
+function galleryHtml(): string {
+  const thumbs = PRODUCT_IMAGES.gallery
+    .map((u) => `<img src="${u}" alt="${PRODUCT_IMAGES.alt}">`)
+    .join("");
+  return `<div class="gallery">
+  <div class="thumbs">${thumbs}</div>
+  <div class="main-img"><img src="${PRODUCT_IMAGES.main}" alt="${PRODUCT_IMAGES.alt}"></div>
+</div>`;
+}
+
 export function renderStoreHtml(p: ProductRow): string {
-  const price = `$${p.price}`;
+  const price = `$${Number(p.price).toFixed(2)}`;
   const stock = p.in_stock ? "In Stock" : "Out of Stock";
+  const comparePrice = Math.max(p.price + 1, Math.round(Number(p.price) / 0.9));
+  const savePct = Math.max(1, Math.round(((comparePrice - Number(p.price)) / comparePrice) * 100));
+  const compare = `$${comparePrice.toFixed(2)}`;
+
   const jsonLd =
     p.template === "C"
       ? `<script type="application/ld+json">${JSON.stringify({
-          "@type": "Offer",
+          "@context": "https://schema.org",
+          "@type": "Product",
           name: p.name,
-          price: String(p.price),
-          priceCurrency: "USD",
-          availability: p.in_stock ? "InStock" : "OutOfStock",
+          image: PRODUCT_IMAGES.main,
+          offers: {
+            "@type": "Offer",
+            price: String(p.price),
+            priceCurrency: "USD",
+            availability: p.in_stock ? "InStock" : "OutOfStock",
+          },
         })}</script>`
       : "";
 
-  const header = `<header class="site-header"><nav class="nav"><a href="/">Store</a><a href="/cameras">Cameras</a><a href="/support">Support</a></nav></header>`;
-  const footer = `<footer class="site-footer"><p>© 2026 CamBazaar · Free shipping over $50 · 30-day returns</p></footer>`;
+  const head = (title: string) =>
+    `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} — aperture</title><style>${STYLE}</style></head><body>`;
 
-  // Template A — "classic": .product-container > .price
+  // ---- Template A — "Classic": classic Amazon product page, gallery + buy box ----
   if (p.template === "A") {
-    return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>${p.name} — CamBazaar</title></head><body>
-${header}
+    return `${head(p.name)}
+${headerFull()}
+<div class="crumbs">Camera &amp; Photo › Mirrorless Cameras › <b>${p.name}</b></div>
 <main class="page">
-  <nav class="breadcrumbs"><a href="/">Home</a> › <a href="/cameras">Cameras</a> › <span>${p.name}</span></nav>
-  <div class="product-container">
-    <div class="gallery"><img alt="${p.name}" src="/img/a7iv.jpg"></div>
-    <div class="info">
+  <div class="grid2">
+    ${galleryHtml()}
+    <div class="product-container">
       <h1 class="title">${p.name}</h1>
-      <p class="rating">★★★★★ 4.8 · 1,247 reviews</p>
-      <span class="price">${price}</span>
-      <span class="stock">${stock}</span>
-      <ul class="specs">
-        <li>33 MP Full-Frame CMOS</li>
-        <li>4K 60p · 10-bit</li>
-        <li>5-axis IBIS</li>
-        <li>759-point AF</li>
+      <div class="stars">★★★★★ <a href="#">4.8</a> · 1,247 ratings</div>
+      <div class="meta">Ships from and sold by <a href="#">aperture</a>.</div>
+      <div class="divider"></div>
+      <div class="money"><span class="price">${price}</span><span class="compare">${compare}</span><span class="save">Save ${savePct}%</span></div>
+      <span class="stock${p.in_stock ? "" : " out"}">${stock}</span>
+      <ul class="bullets">
+        <li><b>33 MP</b> full-frame back-illuminated CMOS sensor with 15 stops of dynamic range.</li>
+        <li>4K 60p 10-bit 4:2:2 video with S-Cinetone and 5-axis IBIS stabilization.</li>
+        <li><b>759-point</b> fast hybrid AF with real-time Eye Tracking for humans &amp; animals.</li>
+        <li>Vari-angle 3.0&quot; touchscreen · dual card slots · weather-sealed magnesium body.</li>
+        <li>Includes body, battery, charger, strap and 1-year warranty.</li>
       </ul>
-      <button class="cta">Add to Cart</button>
+      <button class="cta cta-yellow">Add to Cart</button>
+      <button class="cta cta-orange">Buy Now</button>
     </div>
   </div>
 </main>
-${footer}
+${footerHtml()}
 </body></html>`;
   }
 
-  // Template B — "modern": .pricing-section > [data-test='current-price']
+  // ---- Template B — "Modern": minimal DTC layout, hero image + centered buy box ----
   if (p.template === "B") {
-    return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>${p.name} — CamBazaar</title></head><body>
-${header}
-<main class="page">
-  <section class="pricing-section">
-    <div class="hero"><img alt="${p.name}" src="/img/a7iv.jpg"></div>
-    <h1 class="name">${p.name}</h1>
-    <p class="tagline">Full-Frame Mirrorless Camera</p>
-    <span data-test="current-price">${price}</span>
-    <span data-test="availability">${stock}</span>
-    <button class="cta">Add to Cart</button>
-  </section>
+    return `${head(p.name)}
+${headerMinimal()}
+<div class="hero"><img src="${PRODUCT_IMAGES.main}" alt="${PRODUCT_IMAGES.alt}"></div>
+<main class="center pricing-section">
+  <div class="stars" style="justify-content:center">★★★★★ 4.8 · 1,247 ratings</div>
+  <h1 class="title" style="font-size:26px">${p.name}</h1>
+  <p class="tagline">Full-frame mirrorless · 33 MP · 4K 60p</p>
+  <div class="money" style="justify-content:center;margin-top:14px">
+    <span data-test="current-price" class="amount">${price}</span>
+    <span class="compare">${compare}</span>
+    <span class="save">Save ${savePct}%</span>
+  </div>
+  <div class="meta" style="margin-top:6px"><span data-test="availability" class="avail" style="${p.in_stock ? "" : "color:#b12704"}">${stock}</span></div>
+  <div class="specs">
+    <div>33 MP BSI CMOS</div><div>4K 60p 10-bit</div><div>5-axis IBIS</div><div>759-pt AF</div>
+  </div>
+  <button class="cta cta-yellow">Add to Cart</button>
+  <button class="cta cta-orange">Buy Now</button>
+  <p class="meta" style="margin-top:10px">Free 2-day shipping · 30-day returns · 1-year warranty</p>
 </main>
-${footer}
+${footerHtml()}
 </body></html>`;
   }
 
-  // Template C — "schema": JSON-LD + .display-price
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>${p.name} — CamBazaar</title></head><body>
+  // ---- Template C — "Schema": Amazon layout + right rail + tabs + JSON-LD ----
+  return `${head(p.name)}
 ${jsonLd}
-${header}
+${headerFull()}
+<div class="crumbs">Camera &amp; Photo › Mirrorless Cameras › <b>${p.name}</b></div>
 <main class="page">
-  <article class="pdp">
-    <div class="media"><img alt="${p.name}" src="/img/a7iv.jpg"></div>
-    <h1 class="heading">${p.name}</h1>
-    <p class="sku">SKU: ILCE-7M4</p>
-    <span class="display-price">${price}</span>
-    <span class="availability-badge">${stock}</span>
-    <dl class="details"><dt>Sensor</dt><dd>33MP CMOS</dd><dt>Video</dt><dd>4K60</dd></dl>
-  </article>
+  <div class="grid3">
+    ${galleryHtml()}
+    <div class="buybox">
+      <h1 class="title">${p.name}</h1>
+      <div class="stars">★★★★★ <a href="#">4.8</a> · 1,247 ratings · 300+ bought in past month</div>
+      <div class="divider"></div>
+      <div class="money"><span class="display-price">${price}</span><span class="compare">${compare}</span><span class="save">Save ${savePct}%</span></div>
+      <div class="meta" style="margin:6px 0"><span class="availability-badge pill ${p.in_stock ? "pill-green" : "pill-red"}">${stock}</span></div>
+      <ul class="bullets">
+        <li>World's best-selling full-frame mirrorless line — now with 10-bit 4K 60p.</li>
+        <li>Real-time Tracking AF for photo &amp; video, with Eye AF for humans, animals and birds.</li>
+        <li>Dual CFexpress Type A + SD UHS-II slots · USB-C 10 Gbps · weather-sealed.</li>
+        <li>Compatible with the full Sony E-mount lens lineup.</li>
+      </ul>
+      <button class="cta cta-yellow">Add to Cart</button>
+      <button class="cta cta-orange">Buy Now</button>
+    </div>
+    <aside class="rail">
+      <h3>Frequently bought together</h3>
+      <div class="mini"><img src="${PRODUCT_IMAGES.gallery[2]}" alt="lens"><div><div class="n">Sony FE 24-70mm f/2.8 GM II Lens</div><div class="p">$2,298.00</div></div></div>
+      <div class="mini"><img src="${PRODUCT_IMAGES.gallery[1]}" alt="card"><div><div class="n">Sony 128GB CFexpress Type A Card</div><div class="p">$189.00</div></div></div>
+      <button class="cta cta-yellow">Buy all 3 · $3,386.00</button>
+      <div class="soldby"><b>Sold by</b> <a href="#">aperture</a> · 100% positive feedback<br>Free returns · 30 days<br>In stock — ships within 24 hours</div>
+    </aside>
+  </div>
+  <div class="tabs"><span class="tab on">Description</span><span class="tab">Specifications</span><span class="tab">Shipping &amp; Returns</span></div>
+  <div class="panel">
+    <h4>About this item</h4>
+    <ul>
+      <li>33 MP full-frame BSI CMOS sensor — class-leading stills and 4K 60p 10-bit video in one body.</li>
+      <li>5-axis in-body image stabilization rated for up to 5.5 stops.</li>
+      <li>759-point phase-detection AF covers 94% of the frame; real-time Eye AF for humans, animals and birds.</li>
+      <li>Weather-sealed magnesium alloy body · vari-angle 3.0&quot; touchscreen · dual card slots.</li>
+    </ul>
+    <h4>Specifications</h4>
+    <table class="table">
+      <tr><td>Brand</td><td>Sony</td></tr>
+      <tr><td>Model</td><td>ILCE-7M4</td></tr>
+      <tr><td>Sensor</td><td>33 MP full-frame BSI CMOS</td></tr>
+      <tr><td>Video</td><td>4K 60p · 10-bit 4:2:2</td></tr>
+      <tr><td>Stabilization</td><td>5-axis IBIS (5.5 stops)</td></tr>
+      <tr><td>Autofocus</td><td>759-point hybrid phase/contrast</td></tr>
+      <tr><td>Weight</td><td>658 g (body only)</td></tr>
+    </table>
+    <h4>Shipping &amp; Returns</h4>
+    <ul>
+      <li>Free 2-day shipping on orders over $50.</li>
+      <li>30-day hassle-free returns.</li>
+      <li>1-year manufacturer warranty included.</li>
+    </ul>
+  </div>
 </main>
-${footer}
+${footerHtml()}
 </body></html>`;
 }

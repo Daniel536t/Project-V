@@ -4,6 +4,7 @@ import { createWatchFromIntent, runScrapePass } from "@/lib/sense";
 import { ensureScheduler } from "@/lib/scheduler";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   ensureScheduler();

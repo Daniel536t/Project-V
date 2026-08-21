@@ -63,20 +63,15 @@ export default function Home() {
             className="absolute -left-10 bottom-10 h-64 w-64 rounded-full bg-sense-electric sense-glow"
             style={{ opacity: 0.05 }}
           />
+          {/* Vignette for depth — SENSE side only, so the white store stays clean */}
+          <div
+            className="absolute inset-0"
+            style={{
+              background:
+                "radial-gradient(ellipse at 50% 40%, transparent 55%, rgba(0,0,0,0.5) 100%)",
+            }}
+          />
         </div>
-        {/* Faint purple wash on the store side */}
-        <div
-          className="absolute right-0 top-0 h-72 w-96 rounded-full bg-sense-purple sense-glow"
-          style={{ opacity: 0.05 }}
-        />
-        {/* Vignette for depth */}
-        <div
-          className="absolute inset-0"
-          style={{
-            background:
-              "radial-gradient(ellipse at 50% 40%, transparent 55%, rgba(0,0,0,0.5) 100%)",
-          }}
-        />
       </div>
 
       {/* ── Top bar (56px) ── */}
