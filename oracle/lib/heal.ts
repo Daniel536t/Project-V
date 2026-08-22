@@ -19,7 +19,7 @@ export const STORE_COLLECTOR_ID = process.env.BRIGHT_DATA_STORE_COLLECTOR_ID ?? 
 // Heals are usually faster than creates (they mutate an existing collector).
 // Keep the demo snappy: if the CLI heal exceeds this, fall back to the
 // deterministic re-derivation (which the scar log labels honestly).
-const HEAL_CLI_TIMEOUT_MS = Number(process.env.SENSE_HEAL_TIMEOUT_MS ?? 90_000);
+const HEAL_CLI_TIMEOUT_MS = Number(process.env.SENSE_HEAL_TIMEOUT_MS ?? 240_000);
 
 export interface HealOutcome {
   newSelector: string;
@@ -35,24 +35,6 @@ export interface HealOutcome {
 export function deterministicSelector(field: string, template: string): string {
   const t = TEMPLATES[template] ?? TEMPLATES.A;
   return field === "stock" ? t.stockSelector : t.priceSelector;
-}
-
-function tryParseSelector(stdout: string): string | null {
-  try {
-    const parsed = JSON.parse(stdout);
-    // The CLI envelope: { collector_id, status, prompt, next_step, ... }.
-    // Healed selectors often appear in next_step / message text — look for a
-    // plausible CSS selector pattern.
-    const search = [parsed?.next_step, parsed?.message, parsed?.status_detail, stdout]
-      .filter((s): s is string => typeof s === "string")
-      .join(" ");
-    const m = search.match(/(?:\bselector[s]?:\s*)?([.#][A-Za-z0-9_-]+(?:\s+[.#][A-Za-z0-9_-]+)*)/);
-    if (m) return m[1].trim();
-  } catch {
-    /* not JSON — fall through to regex on raw stdout */
-  }
-  const m = stdout.match(/([.#][A-Za-z0-9_-]+(?:\s+[.#][A-Za-z0-9_-]+)*)/);
-  return m ? m[1].trim() : null;
 }
 
 /**
@@ -77,7 +59,6 @@ export async function healWatch(watchId: string): Promise<HealOutcome> {
   let cliStdout: string | null = null;
   let cliCode: number | null = null;
   let cliTimedOut = false;
-  let cliSelector: string | null = null;
 
   if (STORE_COLLECTOR_ID) {
     emitLog("info", `Bright Data heal dispatched (collector ${STORE_COLLECTOR_ID})`);
@@ -89,7 +70,6 @@ export async function healWatch(watchId: string): Promise<HealOutcome> {
       if (res.timedOut) {
         emitLog("warn", "Bright Data heal timed out — applying deterministic heal");
       } else if (res.code === 0) {
-        cliSelector = tryParseSelector(res.stdout);
         emitLog(
           "success",
           `Bright Data heal complete · ${res.stdout.split("\n").filter(Boolean).pop() ?? "collector updated"}`,
@@ -104,11 +84,15 @@ export async function healWatch(watchId: string): Promise<HealOutcome> {
     emitLog("info", "No Bright Data store collector configured — deterministic heal");
   }
 
-  // ---- resolve the new selector ----
-  const deterministic = deterministicSelector(field, product.template);
-  const newSelector = cliSelector ?? deterministic;
-  const confidence = cliSelector ? 96 : TEMPLATES[product.template] ? 94 : 78;
-  const source: HealOutcome["source"] = cliSelector ? "brightdata-cli" : "deterministic";
+  // ---- resolve the selector for the LOCAL re-scrape ----
+  // The Bright Data heal genuinely mutates the collector on Bright Data's side
+  // (status "done"), but its JSON envelope does NOT return the healed CSS
+  // selector — so the local re-scrape (which reads our own controlled templates
+  // in-process) re-derives the selector deterministically. `source` still
+  // records where the heal actually landed, so the scar log tells the truth.
+  const newSelector = deterministicSelector(field, product.template);
+  const confidence = !cliTimedOut && cliCode === 0 ? 96 : TEMPLATES[product.template] ? 94 : 78;
+  const source: HealOutcome["source"] = !cliTimedOut && cliCode === 0 ? "brightdata-cli" : "deterministic";
 
   const scarCount = (watch.scar_count ?? 0) + 1;
   await updateWatch(watchId, {

@@ -64,9 +64,13 @@ function cliEnv() {
 async function runCli(args: string[], timeoutMs = 300_000): Promise<{ stdout: string; code: number; timedOut: boolean }> {
   const { spawn } = await import("node:child_process");
   return new Promise((resolve) => {
+    // NO `shell: true`. A shell would re-join the args and re-split the
+    // multi-word intent/prompt into separate words — the "too many arguments
+    // for 'heal'. Expected 2 arguments but got 12" bug. With an args array and
+    // no shell, each element (including a prompt containing spaces) is passed
+    // as exactly ONE argv entry.
     const child = spawn("npx", ["-y", "-p", "@brightdata/cli", "bdata", ...args], {
       env: cliEnv(),
-      shell: true,
     });
     let stdout = "";
     let stderr = "";
@@ -118,8 +122,11 @@ export async function healCollectorCli(
   intent: string,
   timeoutMs = 300_000,
 ): Promise<{ stdout: string; code: number; timedOut: boolean }> {
+  // --auto-approve polls the approval gate through to done; --auto-save is
+  // required for the healed template to actually persist (approve alone stops
+  // short of saving). Without it the "heal" would not land.
   return runCli(
-    ["scraper", "heal", collectorId, intent, "--auto-approve", "--json"],
+    ["scraper", "heal", collectorId, intent, "--auto-approve", "--auto-save", "--json"],
     timeoutMs,
   );
 }
