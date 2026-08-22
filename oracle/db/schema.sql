@@ -105,6 +105,8 @@ ALTER TABLE heal_ledger ADD COLUMN IF NOT EXISTS old_selector TEXT;
 ALTER TABLE heal_ledger ADD COLUMN IF NOT EXISTS new_selector TEXT;
 ALTER TABLE heal_ledger ADD COLUMN IF NOT EXISTS confidence INTEGER;
 ALTER TABLE heal_ledger ADD COLUMN IF NOT EXISTS recovery_seconds INTEGER;
+ALTER TABLE heal_ledger ADD COLUMN IF NOT EXISTS attempted_heals INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE heal_ledger ADD COLUMN IF NOT EXISTS recovery_path TEXT;
 
 -- Helpful indexes for the most common lookups
 CREATE INDEX IF NOT EXISTS idx_scraped_data_category_era ON scraped_data (category, era);

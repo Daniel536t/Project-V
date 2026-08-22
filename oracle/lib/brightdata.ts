@@ -145,6 +145,12 @@ function extractLastJson(text: string): Record<string, unknown> | null {
   return null;
 }
 
+export interface HealCliResult {
+  stdout: string;
+  code: number;
+  timedOut: boolean;
+}
+
 /**
  * Heal a collector in place via the CLI (AI self-heal from the original
  * intent). Uses --auto-approve so the heal polls through to done. Returns the
@@ -154,7 +160,7 @@ export async function healCollectorCli(
   collectorId: string,
   intent: string,
   timeoutMs = 300_000,
-): Promise<{ stdout: string; code: number; timedOut: boolean }> {
+): Promise<HealCliResult> {
   const { stdout, stderr, code, timedOut } = await runCli(
     ["scraper", "heal", collectorId, intent, "--auto-approve", "--auto-save", "--json"],
     timeoutMs,

@@ -350,53 +350,31 @@ async function runScrapePassInner(
     healed = true;
     events.push("heal");
 
-    // ---- honest post-heal refresh-wait + polling ----
-    // save_new_template triggers an async refresh job on Bright Data's side.
-    // An immediate re-scrape hits the old broken template. We wait for the
-    // refresh to land, then poll the collector. The terminal narrates every
-    // step honestly — real healing takes a minute.
-    if (heal.source === "brightdata-cli") {
-      emitLog("info", "Heal saved · template refreshing — polling collector…");
-      // Wait 60s for the refresh job to propagate.
-      await new Promise((r) => setTimeout(r, 60_000));
-
-      let refreshed = false;
-      for (let attempt = 1; attempt <= 4; attempt++) {
-        emitLog("info", `Polling after heal (attempt ${attempt}/4)…`);
-        const poll = await scrapeStore(field);
-        if (!poll.broke && poll.price != null && poll.price > 0) {
-          outcome = poll;
-          refreshed = true;
-          break;
-        }
-        if (attempt < 4) await new Promise((r) => setTimeout(r, 20_000));
-      }
-
-      if (refreshed) {
-        emitLog("success", `Collector refresh complete · extraction restored via Bright Data heal`);
-      } else {
-        // If the collector heal didn't restore extraction after the full
-        // refresh window, recover locally with the deterministic selector.
-        // The terminal labels this "local recovery" honestly.
-        emitLog("warn", `Collector heal did not restore extraction after refresh — recovering locally with selector ${heal.newSelector}`);
-        outcome = await scrapeLocalRecovery(field, heal.newSelector);
-      }
+    // healWatch owns the exact 45s + 15s polling windows and returns a
+    // verified Bright Data envelope only when both price and stock are valid.
+    // Never call the collector again immediately: that recreates the refresh
+    // race this flow is designed to avoid.
+    if (heal.landed && heal.verifiedOutcome) {
+      outcome = heal.verifiedOutcome;
+      emitLog("success", `✅ Heal landed · same collector ${collectorId} returned ${outcome.value}`);
     } else {
-      // Deterministic heal: re-scrape immediately (no Bright Data refresh to wait for).
-      emitLog("info", "Re-running…");
-      outcome = await scrapeStore(field);
-
-      // If the collector still returns 0, recover locally.
-      if (outcome.broke && heal.newSelector) {
-        emitLog("warn", `Heal did not restore extraction — recovering locally with selector ${heal.newSelector}`);
-        outcome = await scrapeLocalRecovery(field, heal.newSelector);
-      }
+      emitLog(
+        "warn",
+        `⚠️ Bright Data heal exhausted retries — recovering locally with selector ${heal.newSelector}`,
+      );
+      outcome = await scrapeLocalRecovery(field, heal.newSelector);
     }
 
+    // Re-read the watch for the updated scar_count (healWatch incremented it).
+    watch = (await getWatch(watchId))!;
+
     if (!outcome.broke) {
+      const pathLabel = heal.recoveryPath === "bright-data"
+        ? `Bright Data landed · ${heal.attemptedHeals} heal attempt(s) · zero downtime downstream`
+        : `local-fallback · ${heal.attemptedHeals} heal attempt(s) · zero downtime downstream`;
       emitLog(
         "success",
-        `Scar #${watch.scar_count} · healed in ${Math.max(1, Math.round(heal.durationMs / 1000))}s · zero downtime downstream`,
+        `Scar #${watch.scar_count} · healed in ${Math.max(1, Math.round(heal.durationMs / 1000))}s · ${pathLabel}`,
       );
     }
   }

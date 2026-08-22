@@ -24,6 +24,8 @@ export interface HealLedgerRow {
   error_message: string | null;
   recovery_steps: Record<string, unknown> | null;
   rows_recovered: number | null;
+  attempted_heals: number | null;
+  recovery_path: string | null;
 }
 
 export interface YearlyStats {
@@ -353,6 +355,8 @@ export interface StructuredHeal {
   new_selector: string | null;
   confidence: number | null;
   recovery_seconds: number | null;
+  attempted_heals: number | null;
+  recovery_path: string | null;
   description: string | null;
   error_message: string | null;
 }
@@ -362,8 +366,8 @@ export async function logStructuredHeal(h: StructuredHeal): Promise<HealLedgerRo
     `INSERT INTO heal_ledger
        (watch_id, collector_id, broke_at, healed_at, original_intent,
         old_selector, new_selector, confidence, recovery_seconds,
-        description, error_message)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        attempted_heals, recovery_path, description, error_message)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
      RETURNING *`,
     [
       h.watch_id,
@@ -375,6 +379,8 @@ export async function logStructuredHeal(h: StructuredHeal): Promise<HealLedgerRo
       h.new_selector,
       h.confidence,
       h.recovery_seconds,
+      h.attempted_heals,
+      h.recovery_path,
       h.description,
       h.error_message,
     ],
@@ -392,6 +398,8 @@ export interface ScarLogRow {
   new_selector: string | null;
   confidence: number | null;
   recovery_seconds: number | null;
+  attempted_heals: number | null;
+  recovery_path: string | null;
   description: string | null;
   error_message: string | null;
 }
@@ -400,7 +408,7 @@ export async function getScarLog(): Promise<ScarLogRow[]> {
   return query<ScarLogRow>(
     `SELECT id, watch_id, collector_id, broke_at, healed_at, original_intent,
             old_selector, new_selector, confidence, recovery_seconds,
-            description, error_message
+            attempted_heals, recovery_path, description, error_message
      FROM heal_ledger
      WHERE watch_id IS NOT NULL
      ORDER BY id DESC

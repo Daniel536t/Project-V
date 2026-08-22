@@ -16,6 +16,8 @@ interface ScarRow {
   new_selector: string | null;
   confidence: number | null;
   recovery_seconds: number | null;
+  attempted_heals: number | null;
+  recovery_path: string | null;
   description: string | null;
 }
 
@@ -104,6 +106,12 @@ export default function ScarLogPanel() {
                       </span>
                       <span className="rounded-full bg-[var(--bubble)] px-2 py-0.5 text-[10.5px]">
                         confidence {s.confidence ?? '—'}%
+                      </span>
+                      <span className="rounded-full bg-[var(--bubble)] px-2 py-0.5 text-[10.5px]">
+                        attempts {s.attempted_heals ?? 1}
+                      </span>
+                      <span className="rounded-full bg-[var(--bubble)] px-2 py-0.5 text-[10.5px]">
+                        {s.recovery_path ?? 'local-fallback'}
                       </span>
                       {s.collector_id && (
                         <span className="mono rounded-full bg-[var(--bubble)] px-2 py-0.5 text-[10.5px]">
