@@ -64,3 +64,10 @@ body {
 *::-webkit-scrollbar { width: 6px; height: 6px; }
 *::-webkit-scrollbar-thumb { background: #c7c7cc; border-radius: 3px; }
 *::-webkit-scrollbar-track { background: transparent; }
+
+/* One green pulse when a watched card transitions broken→healed */
+@keyframes sense-heal-flash {
+  0% { box-shadow: 0 0 0 2px var(--success); }
+  100% { box-shadow: 0 0 0 2px transparent; }
+}
+.animate-heal-flash { animation: sense-heal-flash 0.6s ease-out; }

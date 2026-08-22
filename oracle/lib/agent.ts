@@ -143,7 +143,7 @@ export async function handleAgentMessage(msg: string): Promise<AgentReply> {
     if (!target) {
       return {
         action: "check",
-        message: "I'm not watching anything yet — try \"Watch the iPhone 15 Pro and alert me when it drops below $949\".",
+        message: "I'm not watching anything yet — try \"Watch the iPhone 17 Pro and alert me when it drops below $949\".",
         watches,
       };
     }
@@ -171,7 +171,7 @@ export async function handleAgentMessage(msg: string): Promise<AgentReply> {
   if (!parsed) {
     return {
       action: "unknown",
-      message: "I watch pages and alert you on change. Try: \"Watch the iPhone 15 Pro and alert me when it drops below $949\".",
+      message: "I watch pages and alert you on change. Try: \"Watch the iPhone 17 Pro and alert me when it drops below $949\".",
       watches,
     };
   }

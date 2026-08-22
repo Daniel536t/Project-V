@@ -50,7 +50,10 @@ export default function Sidebar() {
 
       {/* New Watch pill (mirrors "New Chat") */}
       <div className="px-3 pt-1 pb-2">
-        <button className="w-full flex items-center gap-2 rounded-full bg-[var(--bubble)] px-3.5 py-2 hover:bg-[#e9e9ec] transition-colors">
+        <button
+          onClick={() => window.dispatchEvent(new CustomEvent('sense:focus-input'))}
+          className="w-full flex items-center gap-2 rounded-full bg-[var(--bubble)] px-3.5 py-2 hover:bg-[#e9e9ec] transition-colors"
+        >
           <MessageSquareText size={16} className="text-[var(--ios-blue)]" />
           <span className="text-[14px] font-medium text-[var(--ios-blue)]">New Watch</span>
           <SquarePen size={13} className="ml-auto text-[var(--gray-2)]" />
@@ -78,6 +81,11 @@ export default function Sidebar() {
         {TOOLS.map(({ icon: Icon, label }) => (
           <button
             key={label}
+            onClick={() => {
+              if (label === 'Scar Log') {
+                window.dispatchEvent(new CustomEvent('sense:open-scar-log'));
+              }
+            }}
             className="w-full flex items-center gap-2.5 rounded-lg px-2 py-[7px] hover:bg-[var(--bubble)] transition-colors"
           >
             <Icon size={15} className="text-[var(--gray-1)]" />

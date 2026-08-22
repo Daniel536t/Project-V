@@ -36,13 +36,21 @@ export function extractBySelector(html: string, selector: string): string | null
     return m ? decodeHtml(m[1].trim()) : null;
   }
 
-  // Class selector: possibly chained (.product-container .price).
+  // Class selector: possibly chained (.product-container .price). Match the
+  // LAST class as an exact whitespace-delimited token, so `.price` never
+  // accidentally matches `.display-price` — a genuine redesign must break.
   const classes = selector.split(/\s+/).filter((c) => c.startsWith("."));
   if (classes.length === 0) return null;
   const last = classes[classes.length - 1].slice(1);
-  const re = new RegExp(`class=['"][^'"]*\\b${escapeRegExp(last)}\\b[^'"]*['"][^>]*>([^<]*)<`, "i");
-  const m = html.match(re);
-  return m ? decodeHtml(m[1].trim()) : null;
+
+  const re = new RegExp(`class=['"]([^'"]*)['"][^>]*>([^<]*)<`, "gi");
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    if (m[1].split(/\s+/).includes(last)) {
+      return decodeHtml(m[2].trim());
+    }
+  }
+  return null;
 }
 
 function escapeRegExp(s: string): string {

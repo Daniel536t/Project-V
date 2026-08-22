@@ -2,14 +2,16 @@ import Sidebar from '@/components/sense/Sidebar';
 import ChatPanel from '@/components/sense/ChatPanel';
 import StorePanel from '@/components/store/StorePanel';
 import TerminalStrip from '@/components/terminal/TerminalStrip';
+import ScarLogSlideOver from '@/components/ScarLogSlideOver';
 
 export default function Home() {
   return (
     <main className="h-screen w-screen flex overflow-hidden bg-white">
       {/* LEFT — SENSE (46%) */}
-      <section className="w-[46%] min-w-[580px] flex shrink-0">
+      <section className="relative w-[46%] min-w-[580px] flex shrink-0">
         <Sidebar />
         <ChatPanel />
+        <ScarLogSlideOver />
       </section>
 
       {/* THE BLACK LINE — exact, 8px, full height, pure black */}

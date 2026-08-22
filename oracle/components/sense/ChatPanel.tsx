@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Activity,
   ArrowUp,
@@ -50,7 +50,7 @@ const SUGGESTIONS = [
     color: '#007aff',
     title: 'Watch a price',
     sub: 'any product, any threshold',
-    fill: 'Alert me when the iPhone 15 Pro drops below $950',
+    fill: 'Alert me when the iPhone 17 Pro drops below $949',
   },
   {
     icon: Package,
@@ -99,6 +99,7 @@ export default function ChatPanel() {
   const [input, setInput] = useState('');
   const [thinking, setThinking] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Subscribe to alerts (SSE) — fire the tingle the instant a condition is met.
   useEffect(() => {
@@ -115,6 +116,13 @@ export default function ChatPanel() {
       }
     };
     return () => es.close();
+  }, []);
+
+  // Sidebar "New Watch" focuses the composer.
+  useEffect(() => {
+    const onFocus = () => inputRef.current?.focus();
+    window.addEventListener('sense:focus-input', onFocus);
+    return () => window.removeEventListener('sense:focus-input', onFocus);
   }, []);
 
   async function handleSend(textOverride?: string) {
@@ -153,7 +161,7 @@ export default function ChatPanel() {
             id: uid(),
             role: 'agent',
             kind: 'normal',
-            text: 'I couldn\u2019t parse that into a watch. Try: \u201cWatch the iPhone 15 Pro and alert me when it drops below $950\u201d.',
+            text: 'I couldn\u2019t parse that into a watch. Try: \u201cWatch the iPhone 17 Pro and alert me when it drops below $949\u201d.',
           },
         ]);
         return;
@@ -391,6 +399,7 @@ export default function ChatPanel() {
       <div className="shrink-0 px-6 pb-5">
         <div className="flex h-12 items-center gap-2 rounded-full bg-[var(--bubble)] pl-5 pr-2">
           <input
+            ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}

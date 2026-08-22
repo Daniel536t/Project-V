@@ -1,34 +1,29 @@
-// STORE domain — the controllable e-commerce page SENSE watches.
+// STORE domain — the controllable e-commerce storefront SENSE watches.
 //
 // THE REALISM CONTRACT (non-negotiable):
-//   - The price lives in the `products` table (PostgreSQL). One source of truth.
-//   - The store panel fetches it from /api/products and subscribes to SSE.
+//   - The active product's price lives in the `products` table (PostgreSQL).
+//   - The store panel fetches state from /api/store/state and subscribes to SSE.
 //   - The scraper fetches the rendered HTML representation (/api/store/html)
-//     and extracts the price via the active template's CSS selector.
-//   - When the template changes, the old selector genuinely stops matching —
-//     that is the "break" the demo hinges on.
+//     and extracts the active product's price via the template's CSS selector.
+//   - When the template changes (A→B→C), the old selector genuinely stops
+//     matching — that is the "break" the demo hinges on.
 //
-// The `products` table holds ONE row: the ACTIVE product (what the storefront
-// is currently showing and what the scraper targets). Selecting any featured
-// product rewrites that row, so "watch any product" is real — same single
-// source of truth, just pointed at a different product.
+// The store renders a featured-product GRID. Only the ACTIVE product's card
+// carries the template's semantic selectors (`.price`, `[data-test=...]`,
+// `.display-price`), so the collector always extracts exactly what the user
+// is watching. The other cards use plain, non-selector markup.
 //
-// Three DOM templates (A/B/C) render the SAME product data but as three
-// deliberate, complete redesigns of a white, Apple-style store page, so a
-// selector learned against one template is stale against another.
-//
-// NOTE on class names: the scraper's extractBySelector matches the LAST class
-// token of a selector (word-boundary regex), so the tokens `price` / `stock`
-// must appear on exactly ONE element per template — the real price/stock —
-// and never on any other element (so keep "compare", "save", etc. token-free
-// of "price"/"stock").
+// Three DOM templates (A/B/C) render the SAME grid, but with different card
+// semantics, so a selector learned against one template is stale against
+// another.
 
 import { getPool } from "./db";
 import { emitLog, emitStore, type ProductState } from "./stream";
 import {
   FEATURED_PRODUCTS,
   featuredById,
-  PRODUCT_IMAGES,
+  HERO_IMAGES,
+  type FeaturedProduct,
 } from "./store-shared";
 export { PRODUCT_ID, PRODUCT_IMAGES, PRODUCT_NAME } from "./store-shared";
 
@@ -55,13 +50,13 @@ export const TEMPLATES: Record<string, TemplateDef> = {
     key: "A",
     label: "Classic",
     priceSelector: ".product-container .price",
-    stockSelector: ".product-container .stock",
+    stockSelector: ".product-container .stock-status",
   },
   B: {
     key: "B",
     label: "Modern",
     priceSelector: ".pricing-section [data-test='current-price']",
-    stockSelector: ".pricing-section [data-test='availability']",
+    stockSelector: ".availability-badge",
   },
   C: {
     key: "C",
@@ -158,15 +153,15 @@ export async function updateProduct(
 }
 
 // ---------------------------------------------------------------------------
-// Server-rendered store page — a real, white, Apple-style product page. This
-// is what the scraper fetches (the same markup a human sees in the store
-// panel's product view). The price and stock live under the ACTIVE template's
-// selectors only.
+// Server-rendered store page — a white, Apple-style storefront GRID. This is
+// what the scraper fetches (the same data the user sees in the store panel).
+//
+// WARNING: class tokens `price` / `stock-status` / `availability-badge` /
+// `display-price` may appear ONLY on the active product's card (the one the
+// collector extracts), never anywhere else. Use `.cost`, `.pname`, `.money`
+// etc. for the other cards and structural wrappers.
 // ---------------------------------------------------------------------------
 
-// Inline stylesheet. WARNING: never contain `data-test=` attribute selectors,
-// and never put the class tokens `price` / `stock` / `display-price` /
-// `availability-badge` on any element other than the real price/stock.
 const STYLE = `
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Helvetica Neue",Arial,sans-serif;background:#fff;color:#1d1d1f;line-height:1.4}
@@ -177,297 +172,172 @@ a:hover{text-decoration:underline}
 .navlink{color:#1d1d1f}
 .navlink:hover{text-decoration:none;color:#0071e3}
 .navright{margin-left:auto;display:flex;align-items:center;gap:18px;color:#1d1d1f}
-.crumb{font-size:12px;color:#6e6e73;padding:16px 24px 0}
-.crumb b{color:#1d1d1f;font-weight:500}
-.page{padding:14px 24px 40px}
-.wrap{max-width:1060px;margin:0 auto}
-.grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:40px;margin-top:14px}
-.gallery{display:flex;gap:12px;align-items:flex-start}
-.main-img{flex:1;background:#f5f5f7;border-radius:16px;display:flex;align-items:center;justify-content:center;padding:18px;min-height:320px}
-.main-img img{max-width:100%;max-height:360px;object-fit:contain}
-.title{font-size:30px;font-weight:700;letter-spacing:-.5px;line-height:1.1}
-.tagline{font-size:17px;color:#6e6e73;margin-top:4px}
-.divider{border-bottom:1px solid #e8e8ed;margin:16px 0}
-.money{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin:8px 0}
-.price{font-size:30px;font-weight:700;letter-spacing:-.4px}
-.compare{font-size:15px;color:#6e6e73;text-decoration:line-through}
-.save{color:#c00;font-size:14px;font-weight:600}
-.stock{color:#007a3d;font-size:14px;font-weight:600;display:block;margin:4px 0}
-.stock.out{color:#c00}
-.urgency{color:#c00;font-size:12.5px;margin:5px 0 0;font-weight:600}
-.urgency.ok{color:#007a3d}
-.lbl{font-size:13px;font-weight:600;margin:14px 0 7px}
-.colors{display:flex;gap:9px;align-items:center}
-.color{width:24px;height:24px;border-radius:50%;border:1px solid #d2d2d7;cursor:pointer}
-.color.on{box-shadow:0 0 0 2px #0071e3,0 0 0 4px #fff,0 0 0 5px #0071e3}
-.bullets{margin:8px 0 0 18px;font-size:13.5px;line-height:1.7}
-.bullets li{margin-bottom:5px}
-.cta{display:block;width:100%;text-align:center;border-radius:12px;padding:12px;font-size:15px;font-weight:600;cursor:pointer;margin-top:10px;border:1px solid transparent}
-.cta-blue{background:#0071e3;color:#fff}
-.cta-blue:hover{background:#0077ed}
-.cta-ghost{background:#fff;color:#0071e3;border-color:#0071e3}
-.cta-ghost:hover{background:#f5f5f7}
-.delivery{background:#f5f5f7;border-radius:12px;padding:13px 15px;font-size:13px;color:#1d1d1f;margin-top:16px;line-height:1.6}
-.delivery b{font-weight:600}
-.specs{display:grid;grid-template-columns:repeat(2,1fr);gap:9px;margin-top:16px}
-.spec{background:#f5f5f7;border-radius:10px;padding:11px 13px;font-size:12.5px}
-.hero{background:#f5f5f7;display:flex;align-items:center;justify-content:center;padding:30px 20px}
-.hero img{max-height:300px;max-width:100%;object-fit:contain}
-.center{max-width:640px;margin:0 auto;padding:26px 20px 40px;text-align:center}
-.amount{font-size:38px;font-weight:700;letter-spacing:-.6px}
-.avail{color:#007a3d;font-size:14px;font-weight:600}
-.pill{display:inline-block;border-radius:999px;padding:6px 16px;font-size:13px;font-weight:600}
-.pill-green{background:#e5f6ec;color:#007a3d}
-.pill-red{background:#fdeaea;color:#c00}
-.grid3{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr) minmax(0,0.7fr);gap:28px;margin-top:14px}
-.rail{border:1px solid #e8e8ed;border-radius:16px;padding:16px}
-.rail h3{font-size:15px;margin-bottom:10px}
-.mini{display:flex;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid #e8e8ed}
-.mini:last-of-type{border-bottom:0}
-.mini .n{font-size:12.5px;line-height:1.3;color:#1d1d1f}
-.mini .p{font-size:12.5px;font-weight:600;margin-top:2px}
-.soldby{font-size:12px;color:#6e6e73;margin-top:12px;line-height:1.7}
-.soldby b{color:#1d1d1f}
-.tabs{display:flex;gap:4px;margin-top:24px;border-bottom:2px solid #e8e8ed}
-.tab{padding:10px 18px;font-size:13.5px;cursor:pointer;color:#6e6e73;border-bottom:2px solid transparent;margin-bottom:-2px}
-.tab.on{color:#1d1d1f;border-bottom-color:#0071e3;font-weight:600}
-.panel{background:#fff;border-radius:0 0 16px 16px;padding:20px 24px;font-size:13.5px;line-height:1.7;color:#333}
-.panel h4{margin:14px 0 5px;font-size:14px;color:#1d1d1f}
-.panel ul{margin:6px 0 0 18px}
-.panel ul li{margin-bottom:4px}
-.reviews{background:#f5f5f7;border-radius:16px;padding:22px 24px;margin-top:24px}
-.rgrid{display:grid;grid-template-columns:minmax(0,260px) minmax(0,1fr);gap:26px}
-.rsummary h2{font-size:17px;margin-bottom:10px}
-.rscore{font-size:34px;font-weight:700}
-.rstars{color:#e67c00;font-size:14px}
-.rmeta{font-size:12px;color:#6e6e73;margin-top:3px}
-.rbar{height:8px;border-radius:4px;background:#e0e0e5;overflow:hidden;flex:1}
-.rfill{height:100%;background:#e67c00;border-radius:4px}
-.rrow{display:flex;align-items:center;gap:9px;font-size:12px;color:#6e6e73;margin-top:6px}
-.rcard{border-bottom:1px solid #e0e0e5;padding:13px 0}
-.rcard:last-child{border-bottom:0}
-.rhead{display:flex;align-items:center;gap:8px;font-size:13px;flex-wrap:wrap}
-.rname{font-weight:600}
-.rdate{font-size:11px;color:#6e6e73}
-.badge-vp{background:#e5f6ec;color:#007a3d;font-size:10px;padding:2px 7px;border-radius:999px}
-.rtext{font-size:13px;margin-top:7px;line-height:1.65}
-.rvote{font-size:11px;color:#6e6e73;margin-top:5px}
-.rquote{font-size:13.5px;font-style:italic;color:#333;margin-top:14px;padding:13px 15px;background:#fff;border-radius:10px}
-.footer{background:#f5f5f7;color:#6e6e73;text-align:center;padding:15px;font-size:11.5px;margin-top:26px;border-top:1px solid #e8e8ed}
-@media(max-width:900px){.grid2,.grid3,.rgrid{grid-template-columns:1fr}.storenav{gap:16px;overflow:hidden}}
+.wrap{max-width:1200px;margin:0 auto;padding:12px 22px 40px}
+.store-head{display:flex;align-items:baseline;justify-content:space-between}
+.store-head h1{font-size:34px;font-weight:600;letter-spacing:-.5px}
+.browse{font-size:13px;color:#6e6e73}
+.hero{display:flex;background:#f5f5f7;border-radius:18px;margin-top:12px;min-height:280px;overflow:hidden}
+.hero-copy{padding:44px 48px;align-self:center}
+.hero-copy h2{font-size:42px;line-height:1.06;font-weight:600;letter-spacing:-.8px}
+.hero-copy p{font-size:15px;color:#6e6e73;margin-top:14px;line-height:1.45}
+.cta{display:inline-block;background:#0071e3;color:#fff;border-radius:999px;padding:11px 24px;font-size:15px;font-weight:500;margin-top:24px}
+.hero-media{flex:1;display:flex;align-items:flex-end;justify-content:center;gap:24px;padding:24px}
+.hero-media img{object-fit:contain}
+.hero-media .phone{width:180px;filter:drop-shadow(0 18px 22px rgba(0,0,0,.18))}
+.hero-media .side{width:100px;opacity:.95}
+.features{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:20px}
+.feature{background:#f5f5f7;border-radius:14px;padding:16px 12px;text-align:center}
+.feature .ic{font-size:20px}
+.feature b{display:block;font-size:13px;margin-top:8px}
+.feature span{display:block;font-size:12px;color:#6e6e73}
+.featured-head{display:flex;justify-content:space-between;align-items:baseline;margin-top:28px}
+.featured-head h2{font-size:20px;font-weight:600}
+.featured-head a{font-size:13px;color:#0071e3}
+.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-top:12px}
+.card{border:1px solid #e8e8ed;border-radius:16px;padding:12px;background:#fff}
+.card-img{background:#f5f5f7;border-radius:14px;aspect-ratio:1/1.08;display:flex;align-items:center;justify-content:center;padding:16px;position:relative}
+.card-img img{max-width:100%;max-height:100%;object-fit:contain}
+.pname{font-size:13.5px;font-weight:600;margin-top:10px;line-height:1.25}
+.cost{font-size:12.5px;color:#6e6e73;display:block;margin-top:2px}
+.money{display:flex;align-items:baseline;gap:6px;margin-top:2px}
+.now{color:#28c840;font-size:11px;font-weight:600}
+.was{color:#86868b;text-decoration:line-through;font-size:12px}
+.stock-status{display:block;font-size:10px;font-weight:600;color:#007a3d;margin-top:2px}
+.stock-status.out{color:#c00}
+.availability-badge{display:inline-block;font-size:10px;font-weight:600;color:#007a3d;margin-top:2px}
+.availability-badge.out{color:#c00}
+.watch-caption{display:block;font-size:10px;color:#007aff;margin-top:3px}
+.swatches{display:flex;gap:6px;margin-top:6px}
+.swatch{width:10px;height:10px;border-radius:50%;border:1px solid rgba(0,0,0,.1)}
+.footer{background:#f5f5f7;color:#6e6e73;text-align:center;padding:15px;font-size:11.5px;border-top:1px solid #e8e8ed;margin-top:28px}
+@media(max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}.features{grid-template-columns:1fr 1fr}}
 `;
 
 function headerHtml(): string {
   const links = ["Store", "Mac", "iPad", "iPhone", "Watch", "AirPods", "Accessories", "Support"]
     .map((l) => `<a class="navlink" href="#">${l}</a>`)
     .join("");
-  return `
-<header class="storenav">
-  <span class="logo"></span>
-  ${links}
-  <span class="navright"><span>⌕</span><span>▢</span></span>
-</header>`;
+  return `<header class="storenav"><span class="logo"></span>${links}<span class="navright"><span>⌕</span><span>▢</span></span></header>`;
 }
 
 function footerHtml(): string {
   return `<footer class="footer">aperture · Apple &amp; more · Free delivery · 30-day returns · © 2026</footer>`;
 }
 
-function galleryHtml(image: string, alt: string): string {
-  return `<div class="gallery"><div class="main-img"><img src="${image}" alt="${alt}"></div></div>`;
-}
-
-function urgencyHtml(p: ProductRow): string {
-  if (!p.in_stock) return `<div class="urgency">Currently unavailable.</div>`;
-  const level = Number(p.stock_level ?? 3);
-  return level <= 5
-    ? `<div class="urgency">Only ${level} left in stock — order soon.</div>`
-    : `<div class="urgency ok">In stock — ready to ship.</div>`;
-}
-
-function colorsHtml(colors: string[]): string {
-  const dots = colors
-    .map((c, i) => `<span class="color${i === 0 ? " on" : ""}" style="background:${c}"></span>`)
-    .join("");
-  return `<div class="lbl">Color</div><div class="colors">${dots}</div>`;
-}
-
-function bulletsHtml(bullets: string[]): string {
-  return `<ul class="bullets">${bullets.map((b) => `<li>${b}</li>`).join("")}</ul>`;
-}
-
-function reviewsHtml(compact: boolean): string {
-  if (compact) {
-    return `<div class="reviews"><p class="rquote">★★★★★ &ldquo;Had SENSE watch this page for me — got the alert, ordered instantly.&rdquo; — Priya S. · Verified purchase</p></div>`;
-  }
-  const breakdown = [
-    [5, 82],
-    [4, 12],
-    [3, 3],
-    [2, 1],
-    [1, 2],
-  ]
-    .map(
-      ([s, pct]) =>
-        `<div class="rrow"><span>${s}★</span><div class="rbar"><div class="rfill" style="width:${pct}%"></div></div><span>${pct}%</span></div>`,
-    )
-    .join("");
-  const cards = `
-    <div class="rcard">
-      <div class="rhead"><span class="rname">Marcus T.</span><span class="rstars">★★★★★</span><span class="rdate">Reviewed Aug 14, 2026</span><span class="badge-vp">✓ Verified purchase</span></div>
-      <p class="rtext">Build quality is excellent and it's a big step up from my last one. Lasts all day, no complaints.</p>
-      <div class="rvote">312 people found this helpful</div>
-    </div>
-    <div class="rcard">
-      <div class="rhead"><span class="rname">Priya S.</span><span class="rstars">★★★★★</span><span class="rdate">Reviewed Aug 6, 2026</span><span class="badge-vp">✓ Verified purchase</span></div>
-      <p class="rtext">Had SENSE watching the page for a price drop — it pinged me the second it went below my target. Zero stress.</p>
-      <div class="rvote">204 people found this helpful</div>
-    </div>
-    <div class="rcard">
-      <div class="rhead"><span class="rname">Danny R.</span><span class="rstars">★★★★☆</span><span class="rdate">Reviewed Jul 29, 2026</span><span class="badge-vp">✓ Verified purchase</span></div>
-      <p class="rtext">Exactly as described, fast shipping. Four stars only because the box arrived a bit scuffed.</p>
-      <div class="rvote">118 people found this helpful</div>
-    </div>`;
-  return `<section class="reviews">
-  <div class="rgrid">
-    <div class="rsummary">
-      <h2>Ratings &amp; Reviews</h2>
-      <div class="rscore">4.9</div>
-      <div class="rstars">★★★★★</div>
-      <div class="rmeta">2,431 global ratings</div>
-      <div style="margin-top:10px">${breakdown}</div>
-    </div>
-    <div>${cards}</div>
-  </div>
+function heroHtml(): string {
+  return `<section class="hero">
+  <div class="hero-copy"><h2>New season.<br>Elevated.</h2><p>Explore the latest in tech,<br>style, and everyday essentials.</p><span class="cta">Shop Now</span></div>
+  <div class="hero-media"><img class="side" src="${HERO_IMAGES.buds}" alt=""><img class="phone" src="${HERO_IMAGES.phone}" alt=""><img class="side" src="${HERO_IMAGES.watch}" alt=""></div>
 </section>`;
 }
 
-export function renderStoreHtml(p: ProductRow): string {
-  const meta = featuredById(p.id) ?? FEATURED_PRODUCTS[0];
-  const image = meta.image ?? PRODUCT_IMAGES.main;
-  const alt = meta.name ?? p.name;
-  const bullets = meta.bullets ?? [];
+function featuresHtml(): string {
+  const items: [string, string, string][] = [
+    ["🚚", "Free shipping", "On orders over $50"],
+    ["↩️", "30-day returns", "Hassle-free returns"],
+    ["🔒", "Secure payment", "100% secure checkout"],
+    ["🎧", "Specialist support", "We're here to help"],
+  ];
+  return `<section class="features">${items
+    .map(([ic, t, s]) => `<div class="feature"><div class="ic">${ic}</div><b>${t}</b><span>${s}</span></div>`)
+    .join("")}</section>`;
+}
 
+function swatchesHtml(colors: string[]): string {
+  if (!colors.length) return "";
+  return `<div class="swatches">${colors
+    .map((c) => `<span class="swatch" style="background:${c}"></span>`)
+    .join("")}</div>`;
+}
+
+function cardImageHtml(image: string, alt: string): string {
+  return `<div class="card-img"><img src="${image}" alt="${alt}"></div>`;
+}
+
+/** A non-active card — plain markup, no semantic selectors. */
+function plainCardHtml(f: FeaturedProduct): string {
+  return `<div class="card">
+  ${cardImageHtml(f.image, f.name)}
+  <h3 class="pname">${f.name}</h3>
+  <span class="cost">$${f.price}</span>
+  ${swatchesHtml(f.colors)}
+</div>`;
+}
+
+/** The ACTIVE card — template-specific semantic selectors. */
+function activeCardHtml(p: ProductRow, meta: FeaturedProduct, template: string): string {
   const priceNum = Number(p.price);
   const price = `$${priceNum.toFixed(2)}`;
+  const original = `$${Number(meta.price).toFixed(2)}`;
+  const changed = priceNum !== Number(meta.price);
   const stock = p.in_stock ? "In Stock" : "Out of Stock";
-  const comparePrice = Math.max(priceNum + 1, Math.round(priceNum / 0.9));
-  const savePct = Math.max(1, Math.round(((comparePrice - priceNum) / comparePrice) * 100));
-  const compare = `$${comparePrice.toFixed(2)}`;
+  const out = p.in_stock ? "" : " out";
+  const nowLabel = changed ? `<span class="now">Now</span>` : "";
+  const wasLabel = changed ? `<span class="was">${original}</span>` : "";
+  const image = cardImageHtml(meta.image, meta.name);
+  const swatches = swatchesHtml(meta.colors);
+  const caption = `<span class="watch-caption">● Watching</span>`;
 
-  const jsonLd =
-    p.template === "C"
-      ? `<script type="application/ld+json">${JSON.stringify({
-          "@context": "https://schema.org",
-          "@type": "Product",
-          name: p.name,
-          image,
-          offers: {
-            "@type": "Offer",
-            price: String(p.price),
-            priceCurrency: "USD",
-            availability: p.in_stock ? "InStock" : "OutOfStock",
-          },
-        })}</script>`
-      : "";
-
-  const head = (title: string) =>
-    `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} — aperture</title><style>${STYLE}</style></head><body>`;
-
-  // ---- Template A — "Classic": Apple store 2-column (gallery + buy box) ----
-  if (p.template === "A") {
-    return `${head(p.name)}
-${headerHtml()}
-<div class="crumb">Store › <b>${p.name}</b></div>
-<main class="page wrap">
-  <div class="grid2">
-    ${galleryHtml(image, alt)}
-    <div class="product-container">
-      <h1 class="title">${p.name}</h1>
-      <p class="tagline">${meta.tagline}</p>
-      <div class="divider"></div>
-      <div class="money"><span class="price">${price}</span><span class="compare">${compare}</span><span class="save">Save ${savePct}%</span></div>
-      <span class="stock${p.in_stock ? "" : " out"}">${stock}</span>
-      ${urgencyHtml(p)}
-      ${colorsHtml(meta.colors)}
-      ${bulletsHtml(bullets)}
-      <button class="cta cta-blue">Add to Bag</button>
-      <button class="cta cta-ghost">Buy</button>
-      <div class="delivery"><b>Free delivery</b> — in stock.<br>Ships within 24 hours · 30-day returns.</div>
-    </div>
-  </div>
-  ${reviewsHtml(false)}
-</main>
-${footerHtml()}
-</body></html>`;
+  if (template === "B") {
+    return `<div class="pricing-section card">
+  ${image}
+  <h3 data-testid="product-name" class="pname">${meta.name}</h3>
+  <div class="money">${nowLabel}<span data-test="current-price">${price}</span>${wasLabel}</div>
+  <span class="availability-badge${out}">${stock}</span>
+  ${caption}
+  ${swatches}
+</div>`;
   }
 
-  // ---- Template B — "Modern": full-bleed hero image + centered buy box ----
-  if (p.template === "B") {
-    return `${head(p.name)}
-${headerHtml()}
-<div class="hero"><img src="${image}" alt="${alt}"></div>
-<main class="center pricing-section">
-  <h1 class="title">${p.name}</h1>
-  <p class="tagline">${meta.tagline}</p>
-  <div class="money" style="justify-content:center;margin-top:16px">
-    <span data-test="current-price" class="amount">${price}</span>
-    <span class="compare">${compare}</span>
-    <span class="save">Save ${savePct}%</span>
-  </div>
-  <div style="margin-top:6px"><span data-test="availability" class="avail" style="${p.in_stock ? "" : "color:#c00"}">${stock}</span></div>
-  ${urgencyHtml(p)}
-  <div style="display:flex;justify-content:center;flex-wrap:wrap">${colorsHtml(meta.colors)}</div>
-  <div class="specs">${bullets.slice(0, 4).map((b) => `<div class="spec">${b}</div>`).join("")}</div>
-  <button class="cta cta-blue">Add to Bag</button>
-  <button class="cta cta-ghost">Buy</button>
-  <p class="tagline" style="margin-top:12px">Free delivery · 30-day returns · 1-year warranty</p>
-  ${reviewsHtml(true)}
-</main>
-${footerHtml()}
-</body></html>`;
+  if (template === "C") {
+    const jsonLd = `<script type="application/ld+json">${JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "Product",
+      name: meta.name,
+      offers: {
+        "@type": "Offer",
+        price: String(p.price),
+        priceCurrency: "USD",
+        availability: p.in_stock ? "InStock" : "OutOfStock",
+      },
+    })}</script>`;
+    return `<div class="card">
+  ${image}
+  <h3 itemProp="name" class="pname">${meta.name}</h3>
+  <div class="money">${nowLabel}<span class="display-price">${price}</span>${wasLabel}</div>
+  <span class="availability-badge${out}">${stock}</span>
+  ${caption}
+  ${swatches}
+  ${jsonLd}
+</div>`;
   }
 
-  // ---- Template C — "Schema": 3-column + rail + tabs + JSON-LD ----
-  return `${head(p.name)}
-${jsonLd}
+  // Template A — "Classic"
+  return `<div class="product-container card">
+  ${image}
+  <h3 class="product-title pname">${meta.name}</h3>
+  <div class="money">${nowLabel}<span class="price">${price}</span>${wasLabel}</div>
+  <span class="stock-status${out}">${stock}</span>
+  ${caption}
+  ${swatches}
+</div>`;
+}
+
+export function renderStoreHtml(p: ProductRow): string {
+  const cards = FEATURED_PRODUCTS.map((f) =>
+    f.id === p.id ? activeCardHtml(p, f, p.template) : plainCardHtml(f),
+  ).join("\n");
+
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>aperture — Store</title><style>${STYLE}</style></head><body>
 ${headerHtml()}
-<div class="crumb">Store › <b>${p.name}</b></div>
-<main class="page wrap">
-  <div class="grid3">
-    ${galleryHtml(image, alt)}
-    <div class="buybox">
-      <h1 class="title">${p.name}</h1>
-      <p class="tagline">${meta.tagline}</p>
-      <div class="divider"></div>
-      <div class="money"><span class="display-price">${price}</span><span class="compare">${compare}</span><span class="save">Save ${savePct}%</span></div>
-      <div style="margin:6px 0"><span class="availability-badge pill ${p.in_stock ? "pill-green" : "pill-red"}">${stock}</span></div>
-      ${urgencyHtml(p)}
-      ${bulletsHtml(bullets.slice(0, 4))}
-      ${colorsHtml(meta.colors)}
-      <button class="cta cta-blue">Add to Bag</button>
-      <button class="cta cta-ghost">Buy</button>
-    </div>
-    <aside class="rail">
-      <h3>Why aperture</h3>
-      <div class="mini"><div><div class="n">Free delivery</div><div class="p">On every order</div></div></div>
-      <div class="mini"><div><div class="n">30-day returns</div><div class="p">No questions asked</div></div></div>
-      <div class="mini"><div><div class="n">1-year warranty</div><div class="p">Included</div></div></div>
-      <div class="soldby"><b>Sold by</b> <a href="#">aperture</a> · 100% positive feedback<br>Free returns · 30 days<br>In stock — ships within 24 hours</div>
-    </aside>
-  </div>
-  <div class="tabs"><span class="tab on">Overview</span><span class="tab">Shipping &amp; Returns</span></div>
-  <div class="panel">
-    <h4>Overview</h4>
-    ${bulletsHtml(bullets)}
-    <h4>Shipping &amp; Returns</h4>
-    <ul>
-      <li>Free delivery, in stock.</li>
-      <li>30-day hassle-free returns.</li>
-      <li>1-year warranty included.</li>
-    </ul>
-  </div>
-  ${reviewsHtml(false)}
+<main class="wrap">
+  <div class="store-head"><h1>Store</h1><span class="browse">Browse all ▾</span></div>
+  ${heroHtml()}
+  ${featuresHtml()}
+  <section class="featured">
+    <div class="featured-head"><h2>Featured Products</h2><a href="#">See All</a></div>
+    <div class="grid">${cards}</div>
+  </section>
 </main>
 ${footerHtml()}
 </body></html>`;

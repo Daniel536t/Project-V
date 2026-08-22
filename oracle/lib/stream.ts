@@ -3,7 +3,7 @@
 // and every store change flows through here so the terminal strip and the
 // store panel can both subscribe over HTTP.
 
-export type LogLevel = "info" | "success" | "warn" | "error";
+export type LogLevel = "info" | "success" | "warn" | "error" | "alert";
 
 export interface LogEvent {
   ts: number;

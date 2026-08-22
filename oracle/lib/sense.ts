@@ -191,7 +191,7 @@ export async function runScrapePass(watchId: string): Promise<RunResult> {
   );
 
   if (alerted) {
-    emitLog("success", `CONDITION MET: ${outcome.value} ${watch.operator} ${watch.target ?? ""} → alert dispatched`);
+    emitLog("alert", `CONDITION MET · ${outcome.value} ${watch.operator} ${watch.target ?? ""} → alert dispatched`);
     emitAlert({
       watch_id: watchId,
       product_name: product.name,
@@ -222,6 +222,23 @@ export async function scrapeDueWatches(): Promise<RunResult[]> {
       } catch (e) {
         emitLog("error", `Watch ${w.id} scrape error: ${e instanceof Error ? e.message : String(e)}`);
       }
+    }
+  }
+  return results;
+}
+
+/** Force a scrape of every watch regardless of due-ness. The demo admin
+ * controls call this so a redesign → break → heal (or a price change → alert)
+ * happens live instead of waiting for the scheduler tick. */
+export async function scrapeAllWatches(): Promise<RunResult[]> {
+  const watches = await getWatches();
+  const results: RunResult[] = [];
+  for (const w of watches) {
+    if (w.status === "checking") continue; // avoid overlapping passes
+    try {
+      results.push(await runScrapePass(w.id));
+    } catch (e) {
+      emitLog("error", `Watch ${w.id} scrape error: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
   return results;
