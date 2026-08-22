@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS watches (
 -- SENSE watches (extended for the split-screen product)
 ALTER TABLE watches ADD COLUMN IF NOT EXISTS collector_id TEXT;
 ALTER TABLE watches ADD COLUMN IF NOT EXISTS product_name TEXT;
+ALTER TABLE watches ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'store';
 
 -- Store (the controllable e-commerce page SENSE watches)
 CREATE TABLE IF NOT EXISTS products (

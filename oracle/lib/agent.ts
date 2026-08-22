@@ -7,6 +7,7 @@ import { MODELS } from "./constants";
 import { createWatchFromIntent, runScrapePass, type RunResult } from "./sense";
 import { deleteWatch, getWatches, type WatchRow } from "./db";
 import { FEATURED_PRODUCTS, detectProductName } from "./store-shared";
+import { HN_NAME, HN_URL } from "./live";
 
 const STORE_URL = "/api/store/html";
 const DEFAULT_PRODUCT = "iPhone 17 Pro";
@@ -16,6 +17,69 @@ export interface ParsedIntent {
   target_price: number | null;
   condition: string; // "<", "<=", ">", ">=", "==", "in_stock", "out_of_stock"
   field: "price" | "stock";
+}
+
+// ---- LIVE semantic watch ("watch HN and alert me when X hits the top N") ----
+
+export interface LiveIntent {
+  kind: "live";
+  site: string;
+  name: string;
+  url: string;
+  topic: string;
+  rank: number;
+}
+
+const LIVE_SITES: Record<string, { name: string; url: string }> = {
+  "hacker-news": { name: HN_NAME, url: HN_URL },
+};
+
+export function parseLiveIntentDeterministic(msg: string): LiveIntent | null {
+  const m = msg.trim();
+  if (!/(hacker\s*news|news\.ycombinator|\bhn\b)/i.test(m)) return null;
+  const top = m.match(/top\s*(\d+)/i);
+  if (!top) return null;
+  const rank = Number(top[1]);
+
+  // topic: the noun phrase before "story/stories/post/article/thread".
+  const topicM = m.match(
+    /(?:an?|any|for|about|on)\s+([^.]*?)\s+(?:story|stories|post|article|thread|hit)/i,
+  );
+  let topic = topicM ? topicM[1].trim() : "";
+  topic = topic
+    .replace(/hits?\s+the\s+top\s*\d+.*$/i, "")
+    .replace(/[.\-–—]/g, " ")
+    .trim();
+  if (!topic) topic = "AI";
+
+  return { kind: "live", site: "hacker-news", name: HN_NAME, url: HN_URL, topic, rank };
+}
+
+export async function parseLiveIntentNim(msg: string): Promise<LiveIntent | null> {
+  try {
+    const raw = await callLLM(MODELS.conversational, msg, {
+      system:
+        'Extract a live watch request into JSON with exactly these keys: {"site":"hacker-news","topic":string,"rank":number}. topic is the subject the user wants alerted about (e.g. "AI agents", "climate", "crypto"). rank is the top-N threshold (default 5). Respond with ONLY the JSON.',
+      maxTokens: 200,
+      temperature: 0,
+    });
+    const json = raw.replace(/```(?:json)?/gi, "").trim();
+    const s = json.indexOf("{");
+    const e = json.lastIndexOf("}");
+    if (s === -1 || e === -1) return null;
+    const obj = JSON.parse(json.slice(s, e + 1)) as { site?: string; topic?: string; rank?: number };
+    const conf = LIVE_SITES[String(obj.site ?? "hacker-news")] ?? LIVE_SITES["hacker-news"];
+    return {
+      kind: "live",
+      site: "hacker-news",
+      name: conf.name,
+      url: conf.url,
+      topic: String(obj.topic ?? "AI"),
+      rank: Number(obj.rank ?? 5),
+    };
+  } catch {
+    return null;
+  }
 }
 
 // ---- deterministic parser (fast path + fallback) ----
@@ -162,6 +226,30 @@ export async function handleAgentMessage(msg: string): Promise<AgentReply> {
       watches: await getWatches(),
       alert: run.alerted ? run.watch : undefined,
       events: run.events,
+    };
+  }
+
+  // LIVE semantic watch (Hacker News → "top N") — a real Bright Data collector.
+  const live = parseLiveIntentDeterministic(trimmed) ?? (await parseLiveIntentNim(trimmed));
+  if (live) {
+    const watch = await createWatchFromIntent({
+      label: `${live.name} — ${live.topic} in top ${live.rank}`,
+      url: live.url,
+      intent: `Extract the top stories from the front page (title, url, points, comments) and find stories about ${live.topic}`,
+      field: "rank",
+      operator: "<=",
+      target: String(live.rank),
+      query: live.topic,
+      source: "live",
+    });
+    // First real scrape runs async (Bright Data batch job, ~2–3 min).
+    void runScrapePass(watch.id);
+    return {
+      action: "create",
+      message: `Watching ${live.name}. I'll ping you the moment a ${live.topic} story breaks into the top ${live.rank}. Collector ${watch.collector_id}.`,
+      watch,
+      watches: await getWatches(),
+      events: [],
     };
   }
 

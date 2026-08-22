@@ -1,5 +1,12 @@
 import { NextResponse } from "next/server";
-import { parseIntentDeterministic, parseIntentNim, type ParsedIntent } from "@/lib/agent";
+import {
+  parseIntentDeterministic,
+  parseIntentNim,
+  parseLiveIntentDeterministic,
+  parseLiveIntentNim,
+  type ParsedIntent,
+  type LiveIntent,
+} from "@/lib/agent";
 
 export const runtime = "nodejs";
 
@@ -8,6 +15,14 @@ export async function POST(req: Request) {
   const message = body?.message;
   if (!message || typeof message !== "string") {
     return NextResponse.json({ error: "message is required" }, { status: 400 });
+  }
+
+  // Live semantic watch first ("watch HN and alert me when an AI-agents story
+  // hits the top 5"), then the store price/stock intent.
+  const live: LiveIntent | null =
+    parseLiveIntentDeterministic(message) ?? (await parseLiveIntentNim(message));
+  if (live) {
+    return NextResponse.json(live);
   }
 
   // Deterministic first (instant + reliable for the demo); NIM structured
@@ -23,6 +38,7 @@ export async function POST(req: Request) {
   }
 
   return NextResponse.json({
+    kind: "store",
     product_name: parsed.product_name,
     target_price: parsed.target_price,
     condition: parsed.condition,

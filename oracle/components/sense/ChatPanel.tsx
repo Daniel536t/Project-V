@@ -187,6 +187,48 @@ export default function ChatPanel() {
         return;
       }
 
+      // LIVE semantic watch ("watch HN and alert me when an AI-agents story hits the top 5")
+      if (parsed.kind === 'live') {
+        const createRes = await fetch('/api/watches', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            label: `${parsed.name} — ${parsed.topic} in top ${parsed.rank}`,
+            url: parsed.url,
+            intent: `Extract the top stories from the front page (title, url, points, comments) and find stories about ${parsed.topic}`,
+            field: 'rank',
+            operator: '<=',
+            target: String(parsed.rank),
+            query: parsed.topic,
+            source: 'live',
+          }),
+        });
+        const created = await createRes.json();
+        if (!createRes.ok || created.error) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: uid(),
+              role: 'agent',
+              kind: 'normal',
+              text: created.error ?? 'Something went wrong creating that watch.',
+            },
+          ]);
+          return;
+        }
+        const liveWatch = created.watch;
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: uid(),
+            role: 'agent',
+            kind: 'normal',
+            text: `Done — I'm watching ${parsed.name}. I'll ping you the moment a ${parsed.topic} story breaks into the top ${parsed.rank}. Collector ${liveWatch.collector_id ?? COLLECTOR_ID} · checking every few minutes.`,
+          },
+        ]);
+        return;
+      }
+
       // 2. Create the real collector-backed watch + first scrape.
       const label =
         parsed.field === 'stock'
@@ -343,7 +385,7 @@ export default function ChatPanel() {
                     <div className="min-w-0 flex-1">
                       <div className="animate-shiver rounded-[20px] bg-[var(--bubble)] px-4 py-3 ring-2 ring-[var(--alert)]">
                         <p className="mono text-[13px] font-semibold text-[var(--alert)]">
-                          {m.alert.field === 'stock' ? '\uD83D\uDD14 STOCK ALERT' : '\uD83D\uDD14 PRICE ALERT'}
+                          {m.alert.field === 'stock' ? '\uD83D\uDD14 STOCK ALERT' : m.alert.field === 'rank' ? '\uD83D\uDD14 SENSE ALERT' : '\uD83D\uDD14 PRICE ALERT'}
                         </p>
                         <p className="mt-1.5 text-[15px] leading-relaxed text-[var(--ink)]">
                           {alertLine(m.alert)}
@@ -457,6 +499,11 @@ export default function ChatPanel() {
 function alertLine(a: AlertEvent): string {
   if (a.field === 'stock') {
     return `${a.product_name} is ${a.value}!`;
+  }
+  if (a.field === 'rank') {
+    return a.detail
+      ? `A story just hit #${a.value} on ${a.product_name}: "${a.detail}"`
+      : `A story just hit the top ${a.target} on ${a.product_name} (rank #${a.value}).`;
   }
   const v = num(a.value);
   const t = num(a.target);

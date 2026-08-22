@@ -20,6 +20,8 @@ export interface AlertEvent {
   field: string;
   operator: string;
   target: string | null;
+  /** Optional human detail (e.g. matched story title for a semantic alert). */
+  detail?: string | null;
 }
 
 export interface StoreState {

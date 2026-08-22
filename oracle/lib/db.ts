@@ -178,6 +178,7 @@ export interface WatchRow {
   next_check_at: Date | null;
   collector_id: string | null;
   product_name: string | null;
+  source: string;
   created_at: Date;
   updated_at: Date;
 }
@@ -205,12 +206,13 @@ export async function createWatch(
         | "next_check_at"
         | "collector_id"
         | "product_name"
+        | "source"
       >
     >,
 ): Promise<WatchRow> {
   const rows = await query<WatchRow>(
-    `INSERT INTO watches (id, label, url, intent, field, operator, target, selector, query, status, next_check_at, collector_id, product_name)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+    `INSERT INTO watches (id, label, url, intent, field, operator, target, selector, query, status, next_check_at, collector_id, product_name, source)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
      RETURNING *`,
     [
       w.id,
@@ -226,6 +228,7 @@ export async function createWatch(
       w.next_check_at ?? null,
       w.collector_id ?? null,
       w.product_name ?? null,
+      w.source ?? "store",
     ],
   );
   return rows[0];
@@ -247,6 +250,7 @@ const WATCH_EDITABLE = new Set([
   "next_check_at",
   "collector_id",
   "product_name",
+  "source",
 ]);
 
 export async function updateWatch(
@@ -269,6 +273,7 @@ export async function updateWatch(
       | "next_check_at"
       | "collector_id"
       | "product_name"
+      | "source"
     >
   >,
 ): Promise<WatchRow | null> {
@@ -290,6 +295,11 @@ export async function deleteWatch(id: string): Promise<boolean> {
 
 export async function deleteAllWatches(): Promise<number> {
   const res = await getPool().query(`DELETE FROM watches`);
+  return res.rowCount ?? 0;
+}
+
+export async function deleteWatchesBySource(source: string): Promise<number> {
+  const res = await getPool().query(`DELETE FROM watches WHERE source = $1`, [source]);
   return res.rowCount ?? 0;
 }
 

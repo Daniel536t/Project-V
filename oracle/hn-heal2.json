@@ -1,0 +1,6 @@
+Triggering self-healing...
+Failed to start self-healing for collector c_mt443qoyivn3opd1i: Error: Another refactor job is still in progress
+  Status: 409
+{"collector_id":"c_mt443qoyivn3opd1i","status":"heal_trigger_failed","completed_steps":[],"prompt":"Each story is missing its rank. Add a rank field to every story: the story numeric position on the Hacker News front page (1 through 30, the number shown to the left of each title). Keep title, url, points, and comment_count.","view_url":"https://brightdata.com/cp/scrapers/c_mt443qoyivn3opd1i","next_step":"bdata scraper run c_mt443qoyivn3opd1i <url>","error":"Another refactor job is still in progress"}
+Note: the heal did not complete, but scraper c_mt443qoyivn3opd1i is unchanged and still works as it did before.
+Open https://brightdata.com/cp/scrapers/c_mt443qoyivn3opd1i to inspect it, or re-run `bdata scraper heal` with a sharper prompt.

@@ -10,6 +10,8 @@ The demo is a single screen, split in two:
 - **RIGHT — STORE**: an Apple-style storefront (nav, "New season. Elevated." hero, benefits, a five-product grid). Every product card has a **Watch** button — watch any product, not just the iPhone — which selects it into the live store and opens its product page. A floating **"⚙ Break This Site"** button opens demo controls: redesign the page, move the price, toggle stock, toggle bot detection.
 - **BOTTOM — TERMINAL**: the live collector log, styled as a dark macOS terminal — every scrape, break, heal, and alert streams here via SSE.
 
+Beyond the controllable store, SENSE also runs a **live watch on a real site**: say "alert me when an AI-agents story hits the top 5 on Hacker News" and a real Bright Data collector (`c_mt443qoyivn3opd1i`) scrapes the real front page every few minutes, an NVIDIA NIM model classifies which stories match your topic semantically (no selector could do this), and the same condition/alert engine fires. Real URL, real scrapes, real latency.
+
 **The rule above all rules: no simulations.** The store's price lives in a real `products` table in PostgreSQL. The store UI fetches it from `/api/products/active` and subscribes to `/api/store/stream` (SSE). The scraper fetches the store's rendered HTML (`/api/store/html`) and extracts the price with a real CSS selector. When the price changes in the popup, the database changes, the store UI updates, and the next real scrape returns the new price.
 
 ---
@@ -32,7 +34,8 @@ BRIGHT_DATA_API_KEY=your_key_here
 BRIGHT_DATA_SERP_ZONE=your_zone_here    # optional: live SERP search features
 BRIGHT_DATA_COLLECTOR_ID=c_xxxxxxxx     # optional: production collector
 BRIGHT_DATA_STORE_COLLECTOR_ID=c_xxxxxxxx  # the store page's real collector
-NVIDIA_API_KEY=your_nvidia_key          # intent parsing (NIM)
+BRIGHT_DATA_HN_COLLECTOR_ID=c_mt443qoyivn3opd1i  # the live Hacker News collector (Phase A)
+NVIDIA_API_KEY=your_nvidia_key          # intent parsing + live story classification (NIM)
 NVIDIA_API_KEY_2=your_backup_key        # fallback key
 OPENROUTER_API_KEY=your_key_here        # optional fallback
 ```
@@ -57,6 +60,38 @@ Put the returned `c_…` ID in `BRIGHT_DATA_STORE_COLLECTOR_ID`. When it's set:
 
 The scrape loop itself is fully real against the store's rendered HTML; the
 collector is what the store's page would be scraped by in production.
+
+### The live watch — a real site, real scrapes (Phase A)
+
+SENSE also watches a **real, fast-moving public URL**: Hacker News. This is the
+part a skeptical judge can poke — nothing about it is on our server.
+
+- **Collector**: `BRIGHT_DATA_HN_COLLECTOR_ID` (`c_mt443qoyivn3opd1i`), created
+  with `bdata scraper create https://news.ycombinator.com "Extract the top
+  stories …"` and runnable in your Bright Data dashboard.
+- **Scrape**: `lib/live.ts` → `bdata scraper run <collector_id> <url> --json`
+  via child process (no shell). HN exceeds the realtime page limit, so runs go
+  through Bright Data's **async batch mode**: each scrape is a submitted job
+  polled to completion, **~2–3 min per job** — that's the real latency SENSE
+  reports, not a made-up interval.
+- **Real envelope shape** (captured 2026-08-22):
+  ```json
+  [{ "stories": [{ "title": "…", "url": "…", "points": 123, "comment_count": 45 }],
+     "product_page_url": "https://news.ycombinator.com", "input": { "url": "…" } }]
+  ```
+  The collector does not yet return the front-page `rank`, so rank is derived
+  as **position by points, descending** — an honest prominence proxy. When the
+  collector returns a `rank` field (after a successful heal), it's honoured
+  verbatim.
+- **Semantic condition**: the "top N" condition is evaluated by an NVIDIA NIM
+  model — `classifyStoryRanks()` asks which of the top 10 story titles relate
+  to the topic and returns the matching integer ranks (a selector-based monitor
+  literally cannot do this). Verified live: "OpenRouter is joining Stripe" was
+  classified as an AI story at rank 6, correctly *not* alerting a top-5 watch.
+- **Shared engine**: the diff, condition evaluation (`<=` vs `target`), alert
+  stream, and Scar Log are the exact same code as the store path — only the
+  "fetch" differs (`scrapeLiveWatch` vs `scrapeStore`). The store isn't a
+  simulation of the pattern; it's a controllable instance of it.
 
 ---
 
@@ -87,6 +122,16 @@ collector is what the store's page would be scraped by in production.
 5. **Try Bot Detection**: toggle it on → scrapes get 403 → status **Broken**.
    Toggle off → SENSE recovers on the next check.
 
+**The live beat (Phase A — the real web):**
+
+6. **In SENSE chat, type:** `Alert me when an AI-agents story hits the top 5 on Hacker News`
+   → SENSE creates a **live watch** on the real HN collector (`c_mt443qoyivn3opd1i`).
+   The terminal shows the real Bright Data batch job submitting, polling
+   (`~2–3 min`), and returning **real stories** — e.g. `149 stories · top AI match rank=6`.
+   The NIM classifier decides *semantically* which stories are about your topic;
+   the alert fires the moment a matching story ranks ≤ 5. You can watch this
+   happen live in the dashboard while the store demo runs beside it.
+
 A judge can do all of it unaided — every control is on screen.
 
 ---
@@ -98,16 +143,18 @@ A judge can do all of it unaided — every control is on screen.
 | Store price | `products` table (Postgres) | One source of truth |
 | Store UI | `components/StorePanel.tsx` | Fetches `/api/products` + SSE |
 | DOM redesign | `lib/store.ts` (templates A/B/C) | Real markup change, different selectors |
-| Scrape | `lib/scraper.ts` | Fetches rendered HTML, extracts by selector |
+| Store scrape | `lib/scraper.ts` | Fetches rendered HTML, extracts by selector |
+| Live scrape | `lib/live.ts` + `bdata scraper run` | Real Bright Data batch job against real HN (~2–3 min) |
+| Semantic classify | `lib/live.ts` + NVIDIA NIM | Which story ranks match the topic ("top N" condition) |
 | Break | selector no longer matches | Empty extraction |
-| Heal | `lib/sense.ts` | Re-derives selector from original intent, logs scar |
+| Heal | `lib/heal.ts` + `bdata scraper heal` | Real Bright Data CLI heal, same collector ID, logs scar |
 | Alerts | `lib/stream.ts` + SSE | Condition evaluation → chat tingle |
 | Intent parsing | `lib/agent.ts` + NVIDIA NIM | Structured JSON, deterministic fallback |
 
 ### API routes
 
-- `POST /api/watches/parse-intent` — NIM LLM → `{ product_name, target_price, condition }`
-- `POST /api/watches` — create watch + first real scrape
+- `POST /api/watches/parse-intent` — NIM LLM → live intent `{ kind: "live", topic, rank }` (HN "top N") or store intent `{ kind: "store", product_name, target_price, condition, field }`
+- `POST /api/watches` — create watch (body `source: "store" | "live"`) + first real scrape
 - `POST /api/watches/:id/scrape` — trigger scrape (auto-heals on break)
 - `POST /api/watches/:id/heal` — manual heal
 - `GET /api/logs` — SSE terminal log stream
@@ -117,7 +164,7 @@ A judge can do all of it unaided — every control is on screen.
 - `GET /api/products/active` — store state (JSON)
 - `POST /api/watches/quick` — select a featured product + create a watch (the Watch buttons)
 - `GET /api/store/html` — store HTML representation (scrape target)
-- `GET /api/ledger` — the Scar Log
+- `GET /api/heal-ledger` — the Scar Log
 
 The scheduler (`lib/scheduler.ts`) ticks every ~20s and scrapes due watches, so
 breaks and alerts also happen live with nobody clicking.

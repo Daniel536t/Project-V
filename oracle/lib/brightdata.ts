@@ -61,7 +61,7 @@ function cliEnv() {
   };
 }
 
-async function runCli(args: string[], timeoutMs = 300_000): Promise<{ stdout: string; code: number; timedOut: boolean }> {
+async function runCli(args: string[], timeoutMs = 300_000): Promise<{ stdout: string; stderr: string; code: number; timedOut: boolean }> {
   const { spawn } = await import("node:child_process");
   return new Promise((resolve) => {
     // NO `shell: true`. A shell would re-join the args and re-split the
@@ -76,13 +76,13 @@ async function runCli(args: string[], timeoutMs = 300_000): Promise<{ stdout: st
     let stderr = "";
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
-      resolve({ stdout: stdout || stderr, code: -1, timedOut: true });
+      resolve({ stdout, stderr, code: -1, timedOut: true });
     }, timeoutMs);
     child.stdout.on("data", (d: Buffer) => (stdout += d.toString()));
     child.stderr.on("data", (d: Buffer) => (stderr += d.toString()));
     child.on("close", (code) => {
       clearTimeout(timer);
-      resolve({ stdout: stdout || stderr, code: code ?? -1, timedOut: false });
+      resolve({ stdout, stderr, code: code ?? -1, timedOut: false });
     });
   });
 }
@@ -94,22 +94,55 @@ async function runCli(args: string[], timeoutMs = 300_000): Promise<{ stdout: st
 export async function runCollectorCli(
   collectorId: string,
   url: string,
-  timeoutMs = 70_000,
+  timeoutMs = 540_000,
 ): Promise<Record<string, unknown> | null> {
-  const { stdout, code } = await runCli(
-    ["scraper", "run", collectorId, url, "--sync", "--json"],
+  // Async (batch) mode: HN + most real pages exceed the realtime page limit,
+  // so the collector falls back to a submitted batch job polled to completion
+  // (~2–3 min). --sync (server 25–50s cap) is too short for these.
+  const { stdout, stderr, code } = await runCli(
+    ["scraper", "run", collectorId, url, "--json"],
     timeoutMs,
   );
   if (code !== 0) return null;
-  try {
-    const parsed = JSON.parse(stdout);
-    // The envelope wraps the result; unwrap the common shapes.
-    if (parsed?.data != null) return parsed.data;
-    if (parsed?.result != null) return parsed.result;
-    return parsed;
-  } catch {
+  const parsed = extractLastJson(`${stdout}\n${stderr}`);
+  if (parsed == null) return null;
+  // Fast-fail envelopes (error, status=failed, concurrent-job cap) are not
+  // valid scrapes — return null so the caller retries.
+  if (parsed?.error != null || parsed?.status === "failed" || parsed?.status === "heal_trigger_failed") {
     return null;
   }
+  // The envelope wraps the result; unwrap the common shapes.
+  if (parsed?.data != null) return (parsed.data as Record<string, unknown>) ?? null;
+  if (parsed?.result != null) return (parsed.result as Record<string, unknown>) ?? null;
+  return parsed;
+}
+
+/**
+ * The CLI prints progress lines ("Polling batch (attempt N/3600)") around the
+ * final JSON payload, split across stdout/stderr. Progress lines contain no
+ * `{` or `[`, so the FIRST opener starts the payload — find its balanced end.
+ */
+function extractLastJson(text: string): Record<string, unknown> | null {
+  if (!text) return null;
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+
+  const firstBrace = trimmed.indexOf("{");
+  const firstBracket = trimmed.indexOf("[");
+  const starts = [firstBrace, firstBracket].filter((i) => i >= 0);
+  if (starts.length === 0) return null;
+  const start = Math.min(...starts);
+
+  for (let end = trimmed.length; end > start; end--) {
+    const candidate = trimmed.slice(start, end);
+    try {
+      const v = JSON.parse(candidate);
+      if (v && typeof v === "object") return v as Record<string, unknown>;
+    } catch {
+      /* keep trimming trailing junk */
+    }
+  }
+  return null;
 }
 
 /**
@@ -122,13 +155,11 @@ export async function healCollectorCli(
   intent: string,
   timeoutMs = 300_000,
 ): Promise<{ stdout: string; code: number; timedOut: boolean }> {
-  // --auto-approve polls the approval gate through to done; --auto-save is
-  // required for the healed template to actually persist (approve alone stops
-  // short of saving). Without it the "heal" would not land.
-  return runCli(
+  const { stdout, stderr, code, timedOut } = await runCli(
     ["scraper", "heal", collectorId, intent, "--auto-approve", "--auto-save", "--json"],
     timeoutMs,
   );
+  return { stdout: stdout || stderr, code, timedOut };
 }
 
 /** Scrape a historical snapshot of a page from the Wayback Machine. */

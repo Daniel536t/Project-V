@@ -13,7 +13,9 @@ export async function GET() {
   try {
     const active = await getProduct();
     const watches = await getWatches();
-    const watch = watches[0] ?? null;
+    // The store panel reflects the STORE watch only; a live (Hacker News)
+    // watch must never bleed its status onto the store card.
+    const watch = watches.find((w) => w.source === "store") ?? null;
 
     const products = FEATURED_PRODUCTS.map((f) => ({
       id: f.id,

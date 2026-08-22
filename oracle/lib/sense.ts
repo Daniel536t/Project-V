@@ -12,7 +12,7 @@ import {
   updateWatch,
   createWatch,
   logScrape,
-  deleteAllWatches,
+  deleteWatchesBySource,
   type WatchRow,
 } from "./db";
 import { getProduct, selectProduct, TEMPLATES } from "./store";
@@ -20,6 +20,12 @@ import { detectProductId } from "./store-shared";
 import { scrapeStore, parsePrice, type ExtractField } from "./scraper";
 import { emitAlert, emitLog } from "./stream";
 import { healWatch, STORE_COLLECTOR_ID } from "./heal";
+import {
+  HN_COLLECTOR_ID,
+  HN_NAME,
+  LIVE_SCRAPE_INTERVAL_MS,
+  scrapeLiveWatch,
+} from "./live";
 
 export function generateWatchId(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -88,7 +94,39 @@ export async function createWatchFromIntent(input: {
   operator: string;
   target: string | null;
   query?: string | null;
+  source?: "store" | "live";
 }): Promise<WatchRow> {
+  const source: "store" | "live" = input.source ?? "store";
+
+  // LIVE watch: a real Bright Data collector against a real public URL. The
+  // store watch is independent — each source keeps at most one active watch
+  // (the demo tells one story per world, side by side).
+  if (source === "live") {
+    await deleteWatchesBySource("live");
+    const collectorId = HN_COLLECTOR_ID;
+    const watch = await createWatch({
+      id: generateWatchId(),
+      label: input.label,
+      url: input.url,
+      intent: input.intent,
+      field: input.field,
+      operator: input.operator,
+      target: input.target,
+      selector: null,
+      query: input.query ?? null,
+      status: "watching",
+      collector_id: collectorId,
+      product_name: HN_NAME,
+      source: "live",
+      next_check_at: new Date(),
+    });
+    emitLog(
+      "info",
+      `Live watch ${watch.id} created · collector ${collectorId} · ${input.url}`,
+    );
+    return watch;
+  }
+
   // If the intent names a different product than the one the store currently
   // shows, switch the store first so the scraper targets the right page.
   const requestedId = input.query ? detectProductId(input.query) : null;
@@ -102,9 +140,8 @@ export async function createWatchFromIntent(input: {
   const field: ExtractField = input.field === "stock" ? "stock" : "price";
   const selector = field === "price" ? t.priceSelector : t.stockSelector;
 
-  // Single active watch: the demo models one collector at a time, so a new
-  // watch supersedes any prior one (the store targets one product at a time).
-  await deleteAllWatches();
+  // One active STORE watch at a time (the store targets one product at a time).
+  await deleteWatchesBySource("store");
 
   // Use the real Bright Data store collector when configured, so the watch's
   // c_ ID is the production collector (same ID across heals — the whole point).
@@ -123,6 +160,7 @@ export async function createWatchFromIntent(input: {
     status: "watching",
     collector_id: collectorId,
     product_name: product.name,
+    source: "store",
     next_check_at: new Date(),
   });
 
@@ -133,10 +171,97 @@ export async function createWatchFromIntent(input: {
   return watch;
 }
 
+/** Run one scrape on a LIVE watch (real Bright Data collector, real URL). */
+async function runLiveScrapePass(watch: WatchRow): Promise<RunResult> {
+  const events: string[] = [];
+  const collectorId = watch.collector_id ?? HN_COLLECTOR_ID;
+
+  emitLog("info", `Scraping ${watch.product_name ?? watch.url} (live)…`);
+  await updateWatch(watch.id, { status: "checking" });
+
+  const started = Date.now();
+  const outcome = await scrapeLiveWatch(watch);
+  const elapsedS = Math.round((Date.now() - started) / 1000);
+
+  if (outcome.broke) {
+    // Transient failures (slow batch, CLI hiccup, empty extraction on a
+    // fast cycle) are not real breaks — keep watching and retry on the
+    // next scheduled tick.
+    if (outcome.reason === "collector-error" || outcome.reason === "empty-extraction") {
+      emitLog(
+        "warn",
+        `Live scrape didn't return data (${outcome.reason ?? "transient"}) — retrying in ${Math.round(LIVE_SCRAPE_INTERVAL_MS / 1000)}s (collector ${collectorId})`,
+      );
+      await updateWatch(watch.id, {
+        status: "watching",
+        last_checked_at: new Date(),
+        next_check_at: new Date(Date.now() + LIVE_SCRAPE_INTERVAL_MS),
+      });
+      return { watch: (await getWatch(watch.id))!, events, alerted: false, healed: false, value: null };
+    }
+    emitLog(
+      "error",
+      `Live scrape failed — ${outcome.reason ?? "empty"} (collector ${collectorId})`,
+    );
+    await updateWatch(watch.id, {
+      status: "broken",
+      last_value: null,
+      last_checked_at: new Date(),
+    });
+    return { watch: (await getWatch(watch.id))!, events, alerted: false, healed: false, value: null };
+  }
+
+  const value = outcome.value;
+  const alerted = evaluateCondition(value, watch.field, watch.operator, watch.target);
+
+  await logScrape(watch.id, value != null ? Number(value) : null, null, {
+    stories: outcome.stories,
+    matched: outcome.matchedTitles,
+  });
+
+  const status = alerted ? "alerted" : "watching";
+  await updateWatch(watch.id, {
+    status,
+    last_value: value,
+    last_checked_at: new Date(),
+    next_check_at: new Date(Date.now() + LIVE_SCRAPE_INTERVAL_MS),
+  });
+
+  emitLog(
+    "success",
+    `${outcome.stories.length} stories · top ${watch.query ?? ""} match rank=${value ?? "none"} · ${elapsedS}s (collector ${collectorId})`,
+  );
+
+  if (alerted) {
+    const detail = outcome.matchedTitles[0] ?? null;
+    emitLog(
+      "alert",
+      `CONDITION MET · "${watch.query ?? ""}" in top ${watch.target ?? "?"} · rank ${value}`,
+    );
+    emitAlert({
+      watch_id: watch.id,
+      product_name: watch.product_name ?? HN_NAME,
+      value: value ?? "",
+      field: watch.field,
+      operator: watch.operator,
+      target: watch.target,
+      detail,
+    });
+    events.push("alert");
+  }
+
+  return { watch: (await getWatch(watch.id))!, events, alerted, healed: false, value };
+}
+
 /** Run one scrape on a watch, auto-healing if it breaks. */
 export async function runScrapePass(watchId: string): Promise<RunResult> {
   let watch = await getWatch(watchId);
   if (!watch) throw new Error(`Watch ${watchId} not found`);
+
+  // LIVE watch: real collector against a real URL — no store heal, no selector.
+  if (watch.source === "live") {
+    return runLiveScrapePass(watch);
+  }
 
   const events: string[] = [];
   let healed = false;
@@ -252,7 +377,9 @@ export async function scrapeDueWatches(): Promise<RunResult[]> {
  * controls call this so a redesign → break → heal (or a price change → alert)
  * happens live instead of waiting for the scheduler tick. */
 export async function scrapeAllWatches(): Promise<RunResult[]> {
-  const watches = await getWatches();
+  // Admin store controls drive the STORE watch; the live watch runs on its own
+  // slower cadence and must not be force-scraped by every store tweak.
+  const watches = (await getWatches()).filter((w) => w.source === "store");
   const results: RunResult[] = [];
   for (const w of watches) {
     if (w.status === "checking") continue; // avoid overlapping passes
