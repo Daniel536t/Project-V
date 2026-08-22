@@ -108,6 +108,28 @@ ALTER TABLE heal_ledger ADD COLUMN IF NOT EXISTS recovery_seconds INTEGER;
 ALTER TABLE heal_ledger ADD COLUMN IF NOT EXISTS attempted_heals INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE heal_ledger ADD COLUMN IF NOT EXISTS recovery_path TEXT;
 
+-- Wayback anchor watch (era crossing: 2019 → 2026)
+CREATE TABLE IF NOT EXISTS era_heal_ledger (
+  id SERIAL PRIMARY KEY,
+  collector_id TEXT NOT NULL,
+  era_from INTEGER NOT NULL,
+  era_to INTEGER NOT NULL,
+  era_from_url TEXT NOT NULL,
+  era_to_url TEXT NOT NULL,
+  retailer TEXT NOT NULL,
+  product_name TEXT,
+  old_selector TEXT,
+  new_selector TEXT,
+  confidence INTEGER,
+  recovery_seconds INTEGER,
+  attempted_heals INTEGER NOT NULL DEFAULT 1,
+  recovery_path TEXT NOT NULL DEFAULT 'local-fallback',
+  era_from_result JSONB,
+  era_to_result JSONB,
+  description TEXT,
+  healed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- Helpful indexes for the most common lookups
 CREATE INDEX IF NOT EXISTS idx_scraped_data_category_era ON scraped_data (category, era);
 CREATE INDEX IF NOT EXISTS idx_scraped_data_era ON scraped_data (era);

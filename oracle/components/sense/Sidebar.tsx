@@ -9,6 +9,7 @@ import {
   ScrollText,
   Settings,
   ChevronDown,
+  Clock,
 } from 'lucide-react';
 import { APP_NAME, USER_NAME, USER_PLAN } from '@/lib/config';
 import { useSenseUi } from '@/lib/SenseUiContext';
@@ -24,11 +25,12 @@ const CHATS = [
 const TOOLS = [
   { icon: LayoutTemplate, label: 'Templates' },
   { icon: ScrollText,     label: 'Scar Log' },
+  { icon: Clock,          label: 'Time Machine' },
   { icon: Settings,       label: 'Settings' },
 ];
 
 export default function Sidebar() {
-  const { focusInput, setScarOpen } = useSenseUi();
+  const { focusInput, setScarOpen, setTimeMachineOpen } = useSenseUi();
   return (
     <aside className="w-[218px] shrink-0 bg-[var(--sense-sidebar)] border-r border-[var(--sense-line)] flex flex-col">
       {/* macOS traffic lights — exact colors and spacing */}
@@ -85,6 +87,7 @@ export default function Sidebar() {
             key={label}
             onClick={() => {
               if (label === 'Scar Log') setScarOpen(true);
+              if (label === 'Time Machine') setTimeMachineOpen(true);
             }}
             className="w-full flex items-center gap-2.5 rounded-lg px-2 py-[7px] hover:bg-[var(--sense-hover)] transition-colors"
           >

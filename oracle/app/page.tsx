@@ -7,6 +7,7 @@ import ChatPanel from '@/components/sense/ChatPanel';
 import StorePanel from '@/components/store/StorePanel';
 import TerminalStrip from '@/components/terminal/TerminalStrip';
 import ScarLogPanel from '@/components/sense/ScarLogPanel';
+import TimeMachinePanel from '@/components/sense/TimeMachinePanel';
 
 export default function Home() {
   return (
@@ -18,6 +19,7 @@ export default function Home() {
             <Sidebar />
             <ChatPanel />
             <ScarLogPanel />
+            <TimeMachinePanel />
           </section>
 
           {/* THE BLACK LINE — exact, 8px, full height, pure black */}

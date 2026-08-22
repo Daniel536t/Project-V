@@ -7,6 +7,8 @@ interface SenseUiState {
   setDraft: (s: string) => void;
   scarOpen: boolean;
   setScarOpen: (b: boolean) => void;
+  timeMachineOpen: boolean;
+  setTimeMachineOpen: (b: boolean) => void;
   focusTick: number;
   focusInput: () => void;
 }
@@ -18,12 +20,13 @@ const SenseUiContext = createContext<SenseUiState | null>(null);
 export function SenseUiProvider({ children }: { children: ReactNode }) {
   const [draft, setDraft] = useState('');
   const [scarOpen, setScarOpen] = useState(false);
+  const [timeMachineOpen, setTimeMachineOpen] = useState(false);
   const [focusTick, setFocusTick] = useState(0);
 
   const focusInput = () => setFocusTick((t) => t + 1);
 
   return (
-    <SenseUiContext.Provider value={{ draft, setDraft, scarOpen, setScarOpen, focusTick, focusInput }}>
+    <SenseUiContext.Provider value={{ draft, setDraft, scarOpen, setScarOpen, timeMachineOpen, setTimeMachineOpen, focusTick, focusInput }}>
       {children}
     </SenseUiContext.Provider>
   );

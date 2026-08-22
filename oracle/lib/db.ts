@@ -422,3 +422,69 @@ export async function getTotalScarCount(): Promise<number> {
   );
   return Number(rows[0]?.n ?? 0);
 }
+
+// ---- Era heal ledger (Wayback anchor watch) ----
+
+export interface EraHealRow {
+  id: number;
+  collector_id: string;
+  era_from: number;
+  era_to: number;
+  era_from_url: string;
+  era_to_url: string;
+  retailer: string;
+  product_name: string | null;
+  old_selector: string | null;
+  new_selector: string | null;
+  confidence: number | null;
+  recovery_seconds: number | null;
+  attempted_heals: number;
+  recovery_path: string;
+  era_from_result: Record<string, unknown> | null;
+  era_to_result: Record<string, unknown> | null;
+  description: string | null;
+  healed_at: Date;
+}
+
+export async function getEraHealLedger(): Promise<EraHealRow[]> {
+  return query<EraHealRow>(
+    `SELECT * FROM era_heal_ledger ORDER BY id DESC LIMIT 10`,
+  );
+}
+
+export async function logEraHeal(e: {
+  collector_id: string;
+  era_from: number;
+  era_to: number;
+  era_from_url: string;
+  era_to_url: string;
+  retailer: string;
+  product_name?: string;
+  old_selector?: string;
+  new_selector?: string;
+  confidence?: number;
+  recovery_seconds?: number;
+  attempted_heals?: number;
+  recovery_path?: string;
+  era_from_result?: unknown;
+  era_to_result?: unknown;
+  description?: string;
+}): Promise<EraHealRow[]> {
+  return query<EraHealRow>(
+    `INSERT INTO era_heal_ledger
+       (collector_id, era_from, era_to, era_from_url, era_to_url, retailer,
+        product_name, old_selector, new_selector, confidence, recovery_seconds,
+        attempted_heals, recovery_path, era_from_result, era_to_result, description)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+     RETURNING *`,
+    [
+      e.collector_id, e.era_from, e.era_to, e.era_from_url, e.era_to_url,
+      e.retailer, e.product_name ?? null, e.old_selector ?? null, e.new_selector ?? null,
+      e.confidence ?? null, e.recovery_seconds ?? null, e.attempted_heals ?? 1,
+      e.recovery_path ?? 'local-fallback',
+      e.era_from_result ? JSON.stringify(e.era_from_result) : null,
+      e.era_to_result ? JSON.stringify(e.era_to_result) : null,
+      e.description ?? null,
+    ],
+  );
+}
