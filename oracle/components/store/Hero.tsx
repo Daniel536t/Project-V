@@ -3,6 +3,7 @@ import { HERO_IMAGES } from '@/lib/store-shared';
 export default function Hero() {
   return (
     <div className="mt-3 flex min-h-[280px] overflow-hidden rounded-[18px] bg-[var(--card)]">
+      {/* Left: copy */}
       <div className="self-center p-10 lg:p-12">
         <h2 className="text-[42px] font-semibold leading-[1.06] tracking-tight">
           New season.
@@ -18,21 +19,26 @@ export default function Hero() {
           Shop Now
         </button>
       </div>
-      <div className="relative flex flex-1 items-end justify-center gap-6 p-6">
+
+      {/* Right: three-device cluster — overlapping, tight, Apple-style */}
+      <div className="relative flex flex-1 items-end justify-center">
+        {/* AirPods — lower-left, behind phone */}
         <img
           src={HERO_IMAGES.buds}
           alt="AirPods Pro"
-          className="w-[100px] object-contain opacity-95"
+          className="relative z-0 -mr-8 mb-4 w-[110px] object-contain opacity-95"
         />
+        {/* iPhone — tall center hero, overlapping both sides */}
         <img
           src={HERO_IMAGES.phone}
           alt="iPhone 17 Pro"
-          className="w-[180px] object-contain drop-shadow-[0_18px_22px_rgba(0,0,0,0.18)]"
+          className="relative z-10 w-[190px] object-contain drop-shadow-[0_22px_28px_rgba(0,0,0,0.20)]"
         />
+        {/* Watch — lower-right, behind phone */}
         <img
           src={HERO_IMAGES.watch}
           alt="Apple Watch"
-          className="w-[100px] object-contain opacity-95"
+          className="relative z-0 -ml-8 mb-4 w-[110px] object-contain opacity-95"
         />
       </div>
     </div>
