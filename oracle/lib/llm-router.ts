@@ -55,6 +55,12 @@ async function callNim(
 
   let lastError: Error | null = null;
 
+  // Hard ceiling per attempt — a hung NIM endpoint must never hang the
+  // intent-extraction route (the chat path already avoids NIM for the
+  // deterministic demo flow, but fallbacks need a bound too).
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 25_000);
+
   for (let i = 0; i < keys.length; i++) {
     const key = keys[i];
     try {
@@ -72,6 +78,7 @@ async function callNim(
           top_p: 0.95,
           stream: false,
         }),
+        signal: controller.signal,
       });
 
       if (isRetryable(res.status) && i < keys.length - 1) {
@@ -95,10 +102,10 @@ async function callNim(
     } catch (e) {
       lastError = e as Error;
     }
-  }
-
+  }  clearTimeout(timeout);
   throw lastError ?? new Error(`All NVIDIA keys failed for ${model}`);
 }
+
 
 /** Heuristic: short factual queries are simple, analysis/prediction is complex. */
 function assessComplexity(query: string): "simple" | "complex" {

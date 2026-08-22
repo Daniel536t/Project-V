@@ -30,7 +30,7 @@ const TOOLS = [
 export default function Sidebar() {
   const { focusInput, setScarOpen } = useSenseUi();
   return (
-    <aside className="w-[218px] shrink-0 bg-[var(--sidebar)] border-r border-[var(--line)] flex flex-col">
+    <aside className="w-[218px] shrink-0 bg-[var(--sense-sidebar)] border-r border-[var(--sense-line)] flex flex-col">
       {/* macOS traffic lights — exact colors and spacing */}
       <div className="flex items-center gap-2 px-4 pt-4 pb-1">
         <span className="w-3 h-3 rounded-full bg-[#ff5f57]" />
@@ -54,7 +54,7 @@ export default function Sidebar() {
       <div className="px-3 pt-1 pb-2">
         <button
           onClick={focusInput}
-          className="w-full flex items-center gap-2 rounded-full bg-[var(--bubble)] px-3.5 py-2 hover:bg-[#e9e9ec] transition-colors"
+          className="w-full flex items-center gap-2 rounded-full bg-[var(--sense-bubble)] px-3.5 py-2 hover:bg-[var(--sense-hover)] transition-colors"
         >
           <MessageSquareText size={16} className="text-[var(--ios-blue)]" />
           <span className="text-[14px] font-medium text-[var(--ios-blue)]">New Watch</span>
@@ -68,7 +68,7 @@ export default function Sidebar() {
         {CHATS.map((c) => (
           <button
             key={c.t}
-            className="w-full flex items-start gap-2.5 rounded-lg px-2 py-[7px] text-left hover:bg-[var(--bubble)] transition-colors"
+            className="w-full flex items-start gap-2.5 rounded-lg px-2 py-[7px] text-left hover:bg-[var(--sense-hover)] transition-colors"
           >
             <MessageSquare size={14} className="mt-[3px] shrink-0 text-[var(--gray-2)]" />
             <span className="min-w-0">
@@ -86,7 +86,7 @@ export default function Sidebar() {
             onClick={() => {
               if (label === 'Scar Log') setScarOpen(true);
             }}
-            className="w-full flex items-center gap-2.5 rounded-lg px-2 py-[7px] hover:bg-[var(--bubble)] transition-colors"
+            className="w-full flex items-center gap-2.5 rounded-lg px-2 py-[7px] hover:bg-[var(--sense-hover)] transition-colors"
           >
             <Icon size={15} className="text-[var(--gray-1)]" />
             <span className="text-[13px]">{label}</span>
@@ -95,7 +95,7 @@ export default function Sidebar() {
       </nav>
 
       {/* User card — pinned bottom */}
-      <div className="m-3 flex items-center gap-2.5 rounded-xl bg-[var(--bubble)] p-2.5">
+      <div className="m-3 flex items-center gap-2.5 rounded-xl bg-[var(--sense-card)] p-2.5 border border-[var(--sense-line)]">
         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#0aa5ff] via-[#7b61ff] to-[#c86bff] shrink-0" />
         <div className="min-w-0">
           <p className="text-[13px] font-semibold leading-tight truncate">{USER_NAME} Brighten</p>

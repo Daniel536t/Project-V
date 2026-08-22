@@ -17,18 +17,31 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "message is required" }, { status: 400 });
   }
 
-  // Live semantic watch first ("watch HN and alert me when an AI-agents story
-  // hits the top 5"), then the store price/stock intent.
+  // Order matters: the STORE deterministic parser runs FIRST — the demo's
+  // primary flow ("alert me when the iPhone 17 Pro drops below $800") must
+  // never pay an LLM round-trip. NIM is only consulted when both deterministic
+  // parsers miss, so a slow/down NIM endpoint can never break watch creation.
+  let parsed: ParsedIntent | null = parseIntentDeterministic(message);
+  if (parsed) {
+    return NextResponse.json({
+      kind: "store",
+      product_name: parsed.product_name,
+      target_price: parsed.target_price,
+      condition: parsed.condition,
+      field: parsed.field,
+    });
+  }
+
+  // Live semantic watch ("watch HN and alert me when an AI-agents story hits
+  // the top 5") — deterministic first, NIM only for novel phrasing.
   const live: LiveIntent | null =
     parseLiveIntentDeterministic(message) ?? (await parseLiveIntentNim(message));
   if (live) {
     return NextResponse.json(live);
   }
 
-  // Deterministic first (instant + reliable for the demo); NIM structured
-  // JSON is the authority for novel phrasing.
-  let parsed: ParsedIntent | null = parseIntentDeterministic(message);
-  if (!parsed) parsed = await parseIntentNim(message);
+  // NIM structured JSON as the authority for novel phrasing.
+  parsed = await parseIntentNim(message);
 
   if (!parsed) {
     return NextResponse.json(

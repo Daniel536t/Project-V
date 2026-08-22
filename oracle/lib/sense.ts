@@ -50,6 +50,9 @@ export const SCRAPE_INTERVAL_MS = 25 * 1000; // scheduler cadence (20–30s)
 // In-memory lock — prevents overlapping scrape passes on the same watch
 // (scheduler tick + admin force-scrape race). Per-process; fine for pm2.
 const activePasses = new Map<string, Promise<RunResult>>();
+// Only warn once per active pass — a heal's refresh-wait (~2 min) would
+// otherwise spam "skipped" on every scheduler tick.
+const skipWarned = new Set<string>();
 
 // ---- condition evaluation ----
 
@@ -263,7 +266,10 @@ export async function runScrapePass(watchId: string): Promise<RunResult> {
   // force-scrape from racing (both firing a heal and getting 409).
   const existing = activePasses.get(watchId);
   if (existing) {
-    emitLog("warn", `Scrape on ${watchId} skipped — already in progress`);
+    if (!skipWarned.has(watchId)) {
+      skipWarned.add(watchId);
+      emitLog("warn", `Scrape on ${watchId} skipped — already in progress`);
+    }
     return existing;
   }
   const pass = runScrapePassInner(watchId);
@@ -272,6 +278,7 @@ export async function runScrapePass(watchId: string): Promise<RunResult> {
     return await pass;
   } finally {
     activePasses.delete(watchId);
+    skipWarned.delete(watchId);
   }
 }
 

@@ -39,6 +39,33 @@ interface Message {
   scars?: ScarRow[];
 }
 
+/** Shape of POST /api/watches responses. */
+interface CreatedWatch {
+  error?: string;
+  alerted?: boolean;
+  watch?: {
+    collector_id?: string | null;
+    last_value?: string | null;
+    field?: string;
+    target?: string | null;
+    product_name?: string;
+  } | null;
+}
+
+/** Shape of GET/POST /api/watches/parse-intent responses. */
+interface ParsedIntent {
+  kind: 'store' | 'live';
+  product_name?: string;
+  target_price?: number | null;
+  condition?: string;
+  field?: string;
+  name?: string;
+  topic?: string;
+  rank?: number;
+  url?: string;
+  error?: string;
+}
+
 const iphone = featuredById('iphone-17-pro')!;
 const airpods = featuredById('airpods-pro-2')!;
 
@@ -77,6 +104,33 @@ const SPARKLE_PATH =
   'M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8L12 2z';
 
 const uid = () => Math.random().toString(36).slice(2, 9);
+
+interface JsonResponse<T> {
+  ok: boolean;
+  status: number;
+  data: T | null;
+}
+
+/** fetch + JSON parse that throws { status } on non-JSON/non-OK responses. */
+async function fetchJson<T = Record<string, unknown>>(
+  url: string,
+  init?: RequestInit,
+): Promise<JsonResponse<T>> {
+  const res = await fetch(url, init);
+  const text = await res.text();
+  let data: T | null = null;
+  try {
+    data = text ? (JSON.parse(text) as T) : null;
+  } catch {
+    /* non-JSON body (e.g. Next.js 404 HTML) */
+  }
+  if (!res.ok && !data) {
+    const err = new Error(`HTTP ${res.status}`) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
+  }
+  return { ok: res.ok, status: res.status, data };
+}
 
 const num = (v: string | null | undefined): number | null => {
   if (v == null) return null;
@@ -167,14 +221,14 @@ export default function ChatPanel() {
       }
 
       // 1. LLM intent extraction (structured JSON).
-      const parsedRes = await fetch('/api/watches/parse-intent', {
+      const parsedRes = await fetchJson<ParsedIntent>('/api/watches/parse-intent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: msg }),
       });
-      const parsed = await parsedRes.json();
+      const parsed = parsedRes.data;
 
-      if (!parsedRes.ok || parsed.error) {
+      if (!parsedRes.ok || !parsed || parsed.error) {
         setMessages((prev) => [
           ...prev,
           {
@@ -189,7 +243,7 @@ export default function ChatPanel() {
 
       // LIVE semantic watch ("watch HN and alert me when an AI-agents story hits the top 5")
       if (parsed.kind === 'live') {
-        const createRes = await fetch('/api/watches', {
+        const createRes = await fetchJson<CreatedWatch>('/api/watches', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -203,15 +257,15 @@ export default function ChatPanel() {
             source: 'live',
           }),
         });
-        const created = await createRes.json();
-        if (!createRes.ok || created.error) {
+        const created = createRes.data;
+        if (!createRes.ok || !created || created.error) {
           setMessages((prev) => [
             ...prev,
             {
               id: uid(),
               role: 'agent',
               kind: 'normal',
-              text: created.error ?? 'Something went wrong creating that watch.',
+              text: created?.error ?? 'Something went wrong creating that watch.',
             },
           ]);
           return;
@@ -223,7 +277,7 @@ export default function ChatPanel() {
             id: uid(),
             role: 'agent',
             kind: 'normal',
-            text: `Done — I'm watching ${parsed.name}. I'll ping you the moment a ${parsed.topic} story breaks into the top ${parsed.rank}. Collector ${liveWatch.collector_id ?? COLLECTOR_ID} · checking every few minutes.`,
+            text: `Done — I'm watching ${parsed.name}. I'll ping you the moment a ${parsed.topic} story breaks into the top ${parsed.rank}. Collector ${liveWatch?.collector_id ?? COLLECTOR_ID} · checking every few minutes.`,
           },
         ]);
         return;
@@ -235,7 +289,7 @@ export default function ChatPanel() {
           ? `${parsed.product_name} (${parsed.condition === 'out_of_stock' ? 'out of stock' : 'in stock'})`
           : `${parsed.product_name} under $${parsed.target_price ?? '?'}`;
 
-      const createRes = await fetch('/api/watches', {
+      const createRes = await fetchJson<CreatedWatch>('/api/watches', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -248,43 +302,55 @@ export default function ChatPanel() {
           query: parsed.product_name,
         }),
       });
-      const created = await createRes.json();
+      const created = createRes.data;
 
-      if (!createRes.ok || created.error) {
+      if (!createRes.ok || !created || created.error) {
         setMessages((prev) => [
           ...prev,
           {
             id: uid(),
             role: 'agent',
             kind: 'normal',
-            text: created.error ?? 'Something went wrong creating that watch.',
+            text: created?.error ?? 'Something went wrong creating that watch.',
           },
         ]);
         return;
       }
 
       const watch = created.watch;
-      const collector = watch.collector_id ?? COLLECTOR_ID;
-      const current = watch.last_value ?? (watch.field === 'price' ? `$${watch.target}` : '…');
+      const collector = watch?.collector_id ?? COLLECTOR_ID;
+      const current = watch?.last_value ?? (watch?.field === 'price' ? `$${watch.target}` : '…');
 
       let text: string;
-      if (watch.field === 'stock') {
-        text = `Done \u2014 I'm watching ${watch.product_name}. It's ${current} right now. I'll ping you the moment it's back in stock. Collector ${collector} \u00b7 checking every ${SCRAPE_INTERVAL_S}s.`;
+      if (watch?.field === 'stock') {
+        text = `Done \u2014 I'm watching ${watch?.product_name}. It's ${current} right now. I'll ping you the moment it's back in stock. Collector ${collector} \u00b7 checking every ${SCRAPE_INTERVAL_S}s.`;
       } else {
-        text = `Done \u2014 I'm watching ${watch.product_name}. It's ${current} right now. I'll ping you the moment the price drops below $${watch.target}. Collector ${collector} \u00b7 checking every ${SCRAPE_INTERVAL_S}s.`;
+        text = `Done \u2014 I'm watching ${watch?.product_name}. It's ${current} right now. I'll ping you the moment the price drops below $${watch?.target}. Collector ${collector} \u00b7 checking every ${SCRAPE_INTERVAL_S}s.`;
       }
       if (created.alerted) text += ' \uD83D\uDD14 Actually \u2014 the condition is already met.';
 
       setMessages((prev) => [...prev, { id: uid(), role: 'agent', kind: 'normal', text }]);
-    } catch {
+    } catch (e) {
+      const status =
+        typeof e === 'object' && e !== null && 'status' in e
+          ? Number((e as { status: number }).status)
+          : null;
+      let text: string;
+      if (status === 404) {
+        // The Vercel deployment is the store-only mirror (Bright Data's
+        // scrape target). The SENSE runtime — scheduler, CLI, SSE — lives on
+        // the pm2 instance at claude-coder.duckdns.org.
+        text =
+          'This deployment is the store mirror \u2014 the SENSE backend isn\u2019t here. Open the full app at claude-coder.duckdns.org.';
+      } else if (status != null) {
+        text = `The backend returned ${status}. The scheduler is running on the instance \u2014 try again in a few seconds.`;
+      } else {
+        text =
+          'Sorry \u2014 something went wrong reaching the backend. The SENSE server runs on the instance at claude-coder.duckdns.org \u2014 if that page loads, try again.';
+      }
       setMessages((prev) => [
         ...prev,
-        {
-          id: uid(),
-          role: 'agent',
-          kind: 'normal',
-          text: 'Sorry \u2014 something went wrong reaching the backend. Is the server running?',
-        },
+        { id: uid(), role: 'agent', kind: 'normal', text },
       ]);
     } finally {
       setThinking(false);
@@ -321,7 +387,7 @@ export default function ChatPanel() {
     : null;
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col bg-white">
+    <div className="flex min-w-0 flex-1 flex-col bg-[var(--sense-bg)]">
       {/* ── Empty state ── */}
       {empty ? (
         <div className="flex flex-1 flex-col items-center justify-center px-6">
@@ -343,7 +409,7 @@ export default function ChatPanel() {
                   setDraft(s.fill);
                   focusInput();
                 }}
-                className="flex items-center gap-3 rounded-2xl border border-[var(--line)] bg-white px-4 py-3.5 text-left transition-colors hover:bg-[var(--sidebar)]"
+                className="flex items-center gap-3 rounded-2xl border border-[var(--sense-line)] bg-[var(--sense-card)] px-4 py-3.5 text-left transition-colors hover:bg-[var(--sense-hover)]"
               >
                 <s.icon size={18} style={{ color: s.color }} className="shrink-0" />
                 <span className="min-w-0">
@@ -383,7 +449,7 @@ export default function ChatPanel() {
                   {/* alert variant */}
                   {m.kind === 'alert' && m.alert ? (
                     <div className="min-w-0 flex-1">
-                      <div className="animate-shiver rounded-[20px] bg-[var(--bubble)] px-4 py-3 ring-2 ring-[var(--alert)]">
+                      <div className="animate-shiver rounded-[20px] bg-[var(--sense-bubble)] px-4 py-3 ring-2 ring-[var(--alert)]">
                         <p className="mono text-[13px] font-semibold text-[var(--alert)]">
                           {m.alert.field === 'stock' ? '\uD83D\uDD14 STOCK ALERT' : m.alert.field === 'rank' ? '\uD83D\uDD14 SENSE ALERT' : '\uD83D\uDD14 PRICE ALERT'}
                         </p>
@@ -409,7 +475,7 @@ export default function ChatPanel() {
                   ) : (
                     /* normal / scar-log */
                     <div className="min-w-0 flex-1">
-                      <div className="rounded-[20px] bg-[var(--bubble)] px-4 py-3 text-[15px] leading-relaxed text-[var(--ink)]">
+                      <div className="rounded-[20px] bg-[var(--sense-bubble)] px-4 py-3 text-[15px] leading-relaxed text-[var(--ink)]">
                         {m.kind === 'scar-log' ? <ScarLogTable scars={m.scars ?? []} /> : m.text}
                       </div>
 
@@ -446,7 +512,7 @@ export default function ChatPanel() {
                     <path d={SPARKLE_PATH} />
                   </svg>
                 </span>
-                <div className="flex items-center gap-1.5 rounded-[20px] bg-[var(--bubble)] px-4 py-3.5">
+                <div className="flex items-center gap-1.5 rounded-[20px] bg-[var(--sense-bubble)] px-4 py-3.5">
                   <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--gray-2)]" />
                   <span
                     className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--gray-2)]"
@@ -466,12 +532,12 @@ export default function ChatPanel() {
       {/* ── Input bar ── */}
       <div className="shrink-0 px-6 pb-5">
         {chip && (
-          <div className="mb-2 flex h-6 w-fit items-center gap-1.5 rounded-full bg-[var(--bubble)] px-3 text-[11.5px]">
+          <div className="mb-2 flex h-6 w-fit items-center gap-1.5 rounded-full bg-[var(--sense-bubble)] px-3 text-[11.5px]">
             <span className="h-1.5 w-1.5 rounded-full" style={{ background: chip.dot }} />
             <span className={chip.cls}>{chip.label}</span>
           </div>
         )}
-        <div className="flex h-12 items-center gap-2 rounded-full bg-[var(--bubble)] pl-5 pr-2">
+        <div className="flex h-12 items-center gap-2 rounded-full bg-[var(--sense-bubble)] pl-5 pr-2 border border-[var(--sense-line)]">
           <input
             ref={inputRef}
             value={draft}
@@ -531,7 +597,7 @@ function ScarLogTable({ scars }: { scars: ScarRow[] }) {
       </p>
       <table className="w-full border-collapse text-[12px]">
         <thead>
-          <tr className="border-b border-[var(--line)] text-left text-[var(--gray-2)]">
+          <tr className="border-b border-[var(--sense-line)] text-left text-[var(--gray-2)]">
             <th className="py-1.5 pr-2 font-medium">When</th>
             <th className="py-1.5 pr-2 font-medium">Event</th>
             <th className="py-1.5 pr-2 font-medium">Selector</th>
@@ -540,7 +606,7 @@ function ScarLogTable({ scars }: { scars: ScarRow[] }) {
         </thead>
         <tbody>
           {scars.map((s, i) => (
-            <tr key={i} className="border-b border-[var(--line)] align-top">
+            <tr key={i} className="border-b border-[var(--sense-line)] align-top">
               <td className="mono whitespace-nowrap py-1.5 pr-2 text-[var(--gray-2)]">
                 {fmtTime(s.broke_at)}
               </td>

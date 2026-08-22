@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 export interface LogEntry {
   ts: number;
@@ -10,9 +10,10 @@ export interface LogEntry {
 
 /**
  * Live collector log. The /api/logs SSE replays recent history on connect,
- * so a fresh terminal is never blank.
+ * so a fresh terminal is never blank. `clear()` wipes the local view only —
+ * the next live event appends again.
  */
-export function useLogs(): LogEntry[] {
+export function useLogs(): { logs: LogEntry[]; clear: () => void } {
   const [logs, setLogs] = useState<LogEntry[]>([]);
 
   useEffect(() => {
@@ -34,5 +35,7 @@ export function useLogs(): LogEntry[] {
     };
   }, []);
 
-  return logs;
+  const clear = useCallback(() => setLogs([]), []);
+
+  return { logs, clear };
 }

@@ -14,6 +14,14 @@
   --ios-blue: #007aff;       /* chat bubbles, chat accents */
   --store-blue: #0071e3;     /* Apple store buttons/links */
   --store-blue-hover: #0077ed;
+  /* SENSE side — light golden brown (warm sand), the yin to the store's
+     cool Apple gray. Only the left half consumes these. */
+  --sense-sidebar: #f5eedd;  /* sidebar bg — warm sand */
+  --sense-bg: #faf5e8;       /* conversation bg — warm ivory */
+  --sense-card: #fdfaf1;     /* cards / suggestion tiles — warm white */
+  --sense-bubble: #efe6cf;   /* agent bubbles / pills — golden tan */
+  --sense-line: #e4d8bb;     /* hairlines — sand */
+  --sense-hover: #eee3c8;    /* hover states */
   /* Identity moments */
   --alert: #ff375f;          /* spider-sense alert red */
   --danger: #ff453a;
