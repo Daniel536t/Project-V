@@ -78,6 +78,30 @@ Put the returned `c_…` ID in `BRIGHT_DATA_STORE_COLLECTOR_ID`. When it's set:
   in-process render — but it is clearly labelled `via local-fallback` in the
   terminal and never silently pretends to be the real run.
 
+### The Long Tail Problem — Wayback anchor watch
+
+Bright Data's AI heal excels on their 800+ pre-built targets. But the long tail
+of the web — regional retailers, niche catalogs, sites that redesign without
+warning — is where custom scrapers live. SENSE was built for this gap.
+
+Our Wayback anchor watch proves it: a real retailer's organic redesign broke
+extraction, Bright Data's planner couldn't map the new DOM, and SENSE's
+deterministic recovery restored data flow. Same Collector ID, zero downtime.
+
+**Target:** Adorama (adorama.com) — a niche camera/electronics retailer NOT in
+Bright Data's pre-built scraper library. Product: Canon EOS 5D Mark IV.
+
+| Collector | URL | Purpose |
+|---|---|---|
+| `c_mt50b3j82jy9sv1bcv` | 2019 Wayback snapshot | 2019 era scrape ($2,799) |
+| `c_mt508xfx2ku0qj6fky` | 2026 live page | 2026 era scrape ($1,999) |
+| `c_mt50c1ep2ivw4paj8z` | 2019→healed to 2026 | Era heal crossing |
+
+The Time Machine panel (sidebar → Tools → Time Machine) lets you run live
+scrapes against both eras and view the era heal scar. The era heal collector
+was created against the 2019 Wayback snapshot and healed to work on the live
+2026 page — the same `bdata scraper heal` CLI path the store uses.
+
 ### The live watch — a real site, real scrapes (Phase A)
 
 SENSE also watches a **real, fast-moving public URL**: Hacker News. This is the
@@ -182,6 +206,9 @@ A judge can do all of it unaided — every control is on screen.
 - `POST /api/watches/quick` — select a featured product + create a watch (the Watch buttons)
 - `GET /api/store/html` — store HTML representation (scrape target)
 - `GET /api/heal-ledger` — the Scar Log
+- `GET /api/wayback/state` — era heal ledger + config (Time Machine)
+- `POST /api/wayback/run` — run pinned era collector via CLI (body: `{ era: 2019 | 2026 }`)
+- `POST /api/wayback/heal` — dispatch era heal on the era heal collector
 
 The scheduler (`lib/scheduler.ts`) ticks every ~20s and scrapes due watches, so
 breaks and alerts also happen live with nobody clicking.

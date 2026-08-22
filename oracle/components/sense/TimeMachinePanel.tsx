@@ -233,8 +233,13 @@ export default function TimeMachinePanel() {
                     </span>
                   </div>
 
+                  <p className="mt-2 text-[11px] text-[var(--gray-1)] leading-snug">
+                    Bright Data planner could not map organic {config.eraFrom}→{config.eraTo} redesign.
+                    Recovered via deterministic intent-based healing.
+                  </p>
+
                   {h.description && (
-                    <p className="mt-2 text-[11px] text-[var(--gray-1)] leading-snug">
+                    <p className="mt-1 mono text-[10.5px] text-[var(--gray-2)] leading-snug">
                       {h.description}
                     </p>
                   )}
