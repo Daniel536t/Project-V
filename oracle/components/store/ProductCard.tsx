@@ -81,7 +81,7 @@ export default function ProductCard({ product, template, watched, watchStatus, c
       <ProductImage
         src={product.image}
         alt={product.name}
-        objectFit="cover"
+        objectFit="contain"
         className={`h-full w-full ${imgClass}`}
       />
       {product.inStock === false && (
