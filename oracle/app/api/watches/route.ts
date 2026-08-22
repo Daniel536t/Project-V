@@ -43,9 +43,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ watch, alerted: false }, { status: 201 });
     }
 
-    // First real scrape immediately so the watch shows a live price.
-    const run = await runScrapePass(watch.id);
-    return NextResponse.json({ watch: run.watch, alerted: run.alerted }, { status: 201 });
+    // First real scrape immediately so the watch shows a live price. The alert
+    // is suppressed on this pass: if the condition is already met, the chat
+    // says so conversationally ("heads up") instead of firing a repeating
+    // alert. conditionMet reports the raw evaluation for that message.
+    const run = await runScrapePass(watch.id, { suppressAlert: true });
+    return NextResponse.json(
+      { watch: run.watch, alerted: run.conditionMet, conditionMet: run.conditionMet },
+      { status: 201 },
+    );
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : String(e) },

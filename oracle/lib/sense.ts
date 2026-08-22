@@ -17,7 +17,7 @@ import {
 } from "./db";
 import { getProduct, selectProduct, TEMPLATES } from "./store";
 import { detectProductId } from "./store-shared";
-import { scrapeStore, scrapeLocalRecovery, parsePrice, STORE_PUBLIC_URL, type ExtractField, type ScrapeOutcome } from "./scraper";
+import { scrapeStore, scrapeLocalRecovery, parsePrice, storeScrapeUrl, type ExtractField, type ScrapeOutcome } from "./scraper";
 import { emitAlert, emitLog } from "./stream";
 import { healWatch, STORE_COLLECTOR_ID } from "./heal";
 import {
@@ -88,7 +88,10 @@ export function evaluateCondition(
 export interface RunResult {
   watch: WatchRow;
   events: string[];
+  /** A live alert was dispatched this pass (false→true edge, not suppressed). */
   alerted: boolean;
+  /** Raw condition evaluation this pass — true even when the alert was suppressed. */
+  conditionMet: boolean;
   healed: boolean;
   value: string | null;
 }
@@ -179,7 +182,10 @@ export async function createWatchFromIntent(input: {
 }
 
 /** Run one scrape on a LIVE watch (real Bright Data collector, real URL). */
-async function runLiveScrapePass(watch: WatchRow): Promise<RunResult> {
+async function runLiveScrapePass(
+  watch: WatchRow,
+  opts: ScrapeOptions = {},
+): Promise<RunResult> {
   const events: string[] = [];
   const collectorId = watch.collector_id ?? HN_COLLECTOR_ID;
 
@@ -204,7 +210,7 @@ async function runLiveScrapePass(watch: WatchRow): Promise<RunResult> {
         last_checked_at: new Date(),
         next_check_at: new Date(Date.now() + LIVE_SCRAPE_INTERVAL_MS),
       });
-      return { watch: (await getWatch(watch.id))!, events, alerted: false, healed: false, value: null };
+      return { watch: (await getWatch(watch.id))!, events, alerted: false, conditionMet: false, healed: false, value: null };
     }
     emitLog(
       "error",
@@ -215,11 +221,15 @@ async function runLiveScrapePass(watch: WatchRow): Promise<RunResult> {
       last_value: null,
       last_checked_at: new Date(),
     });
-    return { watch: (await getWatch(watch.id))!, events, alerted: false, healed: false, value: null };
+    return { watch: (await getWatch(watch.id))!, events, alerted: false, conditionMet: false, healed: false, value: null };
   }
 
   const value = outcome.value;
-  const alerted = evaluateCondition(value, watch.field, watch.operator, watch.target);
+  // EDGE-TRIGGERED: alert only on a false→true transition. last_condition_met
+  // persists the previous evaluation, so a condition that stays met never
+  // repeats; when it clears, the next true re-arms the alert.
+  const met = evaluateCondition(value, watch.field, watch.operator, watch.target);
+  const alerted = met && !(watch.last_condition_met ?? false) && !opts.suppressAlert;
 
   await logScrape(watch.id, value != null ? Number(value) : null, null, {
     stories: outcome.stories,
@@ -230,6 +240,7 @@ async function runLiveScrapePass(watch: WatchRow): Promise<RunResult> {
   await updateWatch(watch.id, {
     status,
     last_value: value,
+    last_condition_met: met,
     last_checked_at: new Date(),
     next_check_at: new Date(Date.now() + LIVE_SCRAPE_INTERVAL_MS),
   });
@@ -257,11 +268,23 @@ async function runLiveScrapePass(watch: WatchRow): Promise<RunResult> {
     events.push("alert");
   }
 
-  return { watch: (await getWatch(watch.id))!, events, alerted, healed: false, value };
+  return { watch: (await getWatch(watch.id))!, events, alerted, conditionMet: met, healed: false, value };
 }
 
 /** Run one scrape on a watch, auto-healing if it breaks. */
-export async function runScrapePass(watchId: string): Promise<RunResult> {
+export interface ScrapeOptions {
+  /**
+   * Suppress the alert emission for this pass (used for the creation-time
+   * first scrape: if the condition is already met, the chat says so
+   * conversationally instead of firing a repeating alert).
+   */
+  suppressAlert?: boolean;
+}
+
+export async function runScrapePass(
+  watchId: string,
+  opts: ScrapeOptions = {},
+): Promise<RunResult> {
   // Serialize passes per watch — prevents the scheduler tick and admin
   // force-scrape from racing (both firing a heal and getting 409).
   const existing = activePasses.get(watchId);
@@ -272,7 +295,7 @@ export async function runScrapePass(watchId: string): Promise<RunResult> {
     }
     return existing;
   }
-  const pass = runScrapePassInner(watchId);
+  const pass = runScrapePassInner(watchId, opts);
   activePasses.set(watchId, pass);
   try {
     return await pass;
@@ -282,25 +305,29 @@ export async function runScrapePass(watchId: string): Promise<RunResult> {
   }
 }
 
-async function runScrapePassInner(watchId: string): Promise<RunResult> {
+async function runScrapePassInner(
+  watchId: string,
+  opts: ScrapeOptions = {},
+): Promise<RunResult> {
   let watch = await getWatch(watchId);
   if (!watch) throw new Error(`Watch ${watchId} not found`);
 
   // LIVE watch: real collector against a real URL — no store heal, no selector.
   if (watch.source === "live") {
-    return runLiveScrapePass(watch);
+    return runLiveScrapePass(watch, opts);
   }
 
   const events: string[] = [];
   let healed = false;
   let alerted = false;
+  let conditionMet = false;
   let value: string | null = null;
 
   const field: ExtractField = watch.field === "stock" ? "stock" : "price";
   const product = await getProduct();
   const collectorId = watch.collector_id ?? "c_unknown";
 
-  emitLog("info", `Scraping ${product.name} · ${STORE_PUBLIC_URL}…`);
+  emitLog("info", `Scraping ${product.name} · ${storeScrapeUrl(product.id)}…`);
   await updateWatch(watchId, { status: "checking" });
 
   let outcome = await scrapeStore(field);
@@ -310,7 +337,7 @@ async function runScrapePassInner(watchId: string): Promise<RunResult> {
     emitLog("error", `403 Forbidden — bot detection active (collector ${collectorId})`);
     await updateWatch(watchId, { status: "broken", last_value: null });
     watch = (await getWatch(watchId))!;
-    return { watch, events, alerted: false, healed: false, value: null };
+    return { watch, events, alerted: false, conditionMet: false, healed: false, value: null };
   }
 
   // ---- BREAK: stale selector → auto-heal ----
@@ -379,7 +406,7 @@ async function runScrapePassInner(watchId: string): Promise<RunResult> {
     emitLog("error", `Scrape failed — ${outcome.reason ?? "empty"} (collector ${collectorId})`);
     await updateWatch(watchId, { status: "broken", last_value: null });
     watch = (await getWatch(watchId))!;
-    return { watch, events, alerted: false, healed, value: null };
+    return { watch, events, alerted: false, conditionMet: false, healed, value: null };
   }
 
   // ---- success: record history + evaluate condition ----
@@ -387,13 +414,19 @@ async function runScrapePassInner(watchId: string): Promise<RunResult> {
   const inStock = outcome.inStock;
   await logScrape(watchId, price, inStock, { value: outcome.value, selector: watch.selector });
 
-  alerted = evaluateCondition(outcome.value, watch.field, watch.operator, watch.target);
+  // EDGE-TRIGGERED: alert only on a false→true transition. last_condition_met
+  // persists the previous evaluation, so a condition that stays met never
+  // repeats; when it clears, the next true re-arms the alert. The creation-time
+  // first scrape suppresses emission — the chat says it conversationally.
+  conditionMet = evaluateCondition(outcome.value, watch.field, watch.operator, watch.target);
+  alerted = conditionMet && !(watch.last_condition_met ?? false) && !opts.suppressAlert;
   value = outcome.value;
 
   const status = alerted ? "alerted" : healed ? "healed" : "watching";
   await updateWatch(watchId, {
     status,
     last_value: outcome.value,
+    last_condition_met: conditionMet,
     last_checked_at: new Date(),
     next_check_at: new Date(Date.now() + SCRAPE_INTERVAL_MS),
   });
@@ -417,7 +450,7 @@ async function runScrapePassInner(watchId: string): Promise<RunResult> {
   }
 
   watch = (await getWatch(watchId))!;
-  return { watch, events, alerted, healed, value };
+  return { watch, events, alerted, conditionMet, healed, value };
 }
 
 // ---- scheduler hook ----

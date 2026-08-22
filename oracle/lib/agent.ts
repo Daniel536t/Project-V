@@ -214,7 +214,7 @@ export async function handleAgentMessage(msg: string): Promise<AgentReply> {
       };
     }
     const run: RunResult = await runScrapePass(target.id);
-    const suffix = run.alerted
+    const suffix = run.conditionMet
       ? ` 🔔 Condition met — ${run.value}.`
       : run.value != null
         ? ` Currently ${target.field === "price" ? `$${run.value}` : run.value}.`

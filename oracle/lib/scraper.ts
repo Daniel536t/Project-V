@@ -28,9 +28,19 @@ export interface ScrapeOutcome {
   source: "brightdata-collector" | "local-fallback" | "local-recovery";
 }
 
-/** The deployed public URL the store collector scrapes. */
+/** The deployed public URL the store collector scrapes (base, no params). */
 export const STORE_PUBLIC_URL =
   process.env.STORE_PUBLIC_URL ?? "https://sense-rho.vercel.app/api/store/html";
+
+/**
+ * Product-scoped scrape URL. The collector must target ONE product's card so
+ * "the price" is never ambiguous across the five-card grid.
+ */
+export function storeScrapeUrl(productId: string): string {
+  const u = new URL(STORE_PUBLIC_URL);
+  u.searchParams.set("product", productId);
+  return u.toString();
+}
 
 export function parsePrice(value: string | null): number | null {
   if (value == null) return null;
@@ -88,7 +98,7 @@ export async function scrapeStore(field: ExtractField): Promise<ScrapeOutcome> {
     return scrapeLocal(field, selector, product, "local-fallback");
   }
 
-  const raw = await runCollectorCli(collectorId, STORE_PUBLIC_URL, 240_000);
+  const raw = await runCollectorCli(collectorId, storeScrapeUrl(product.id), 240_000);
   if (raw == null) {
     return {
       broke: true, reason: "collector-error",
@@ -135,7 +145,7 @@ function scrapeLocal(
   product: import("./store").ProductRow,
   source: "local-fallback" | "local-recovery",
 ): ScrapeOutcome {
-  const html = renderStoreHtml(product);
+  const html = renderStoreHtml(product, product.id);
   const value = extractBySelector(html, selector);
   if (value == null) {
     return {

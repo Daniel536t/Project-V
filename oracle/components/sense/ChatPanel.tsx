@@ -327,7 +327,10 @@ export default function ChatPanel() {
       } else {
         text = `Done \u2014 I'm watching ${watch?.product_name}. It's ${current} right now. I'll ping you the moment the price drops below $${watch?.target}. Collector ${collector} \u00b7 checking every ${SCRAPE_INTERVAL_S}s.`;
       }
-      if (created.alerted) text += ' \uD83D\uDD14 Actually \u2014 the condition is already met.';
+      if (created.alerted) {
+        const already = watch?.field === 'stock' ? "it's already in stock" : "it's already below your target";
+        text += ` Heads up \u2014 ${already}, so I won't fire an alert for it now. If the condition clears and comes back, I'll ping you then.`;
+      }
 
       setMessages((prev) => [...prev, { id: uid(), role: 'agent', kind: 'normal', text }]);
     } catch (e) {

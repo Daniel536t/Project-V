@@ -266,6 +266,25 @@ function plainCardHtml(f: FeaturedProduct): string {
 
 /** The ACTIVE card — template-specific semantic selectors. */
 function activeCardHtml(p: ProductRow, meta: FeaturedProduct, template: string): string {
+  return activeCardHtmlFor(p, meta, template, p.in_stock);
+}
+
+/**
+ * Same template semantics, but the card may represent a product that is NOT
+ * the active DB row (used by the product-scoped scrape page). Non-active
+ * products render their seeded price/stock — they are not being watched.
+ */
+function activeCardHtmlFor(
+  p: ProductRow,
+  meta: FeaturedProduct,
+  template: string,
+  inStock: boolean,
+): string {
+  const live: ProductRow = meta.id === p.id ? p : { ...p, price: meta.price, in_stock: inStock };
+  return activeCardHtmlImpl(live, meta, template);
+}
+
+function activeCardHtmlImpl(p: ProductRow, meta: FeaturedProduct, template: string): string {
   const priceNum = Number(p.price);
   const price = `$${priceNum.toFixed(2)}`;
   const original = `$${Number(meta.price).toFixed(2)}`;
@@ -323,7 +342,38 @@ function activeCardHtml(p: ProductRow, meta: FeaturedProduct, template: string):
 </div>`;
 }
 
-export function renderStoreHtml(p: ProductRow): string {
+/**
+ * Render the store page. With `only`, renders a MINIMAL page containing just
+ * that product's card (name, price, stock) in the current template's DOM
+ * semantics — the product-scoped scrape target. One product, one price, so
+ * extraction is unambiguous across all three templates. Without `only`, the
+ * full featured-grid page.
+ */
+export function renderStoreHtml(p: ProductRow, only?: string): string {
+  if (only) {
+    const meta = featuredById(only);
+    if (!meta) throw new Error(`Unknown product: ${only}`);
+    const inStock = meta.id === p.id ? p.in_stock : true;
+    const card = activeCardHtmlFor(p, meta, p.template, inStock);
+    // Same chrome as the full store page (nav, hero, features) so the page
+    // looks like the real storefront and a collector trained on the full
+    // layout keeps matching — but the GRID holds exactly ONE card, so "the
+    // price" is never ambiguous.
+    return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${meta.name} — Store</title><style>${STYLE}</style></head><body>
+${headerHtml()}
+<main class="wrap">
+  <div class="store-head"><h1>${meta.name}</h1><span class="browse">Featured</span></div>
+  ${heroHtml()}
+  ${featuresHtml()}
+  <section class="featured">
+    <div class="featured-head"><h2>Featured Products</h2><a href="#">See All</a></div>
+    <div class="grid">${card}</div>
+  </section>
+</main>
+${footerHtml()}
+</body></html>`;
+  }
+
   const cards = FEATURED_PRODUCTS.map((f) =>
     f.id === p.id ? activeCardHtml(p, f, p.template) : plainCardHtml(f),
   ).join("\n");

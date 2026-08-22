@@ -179,6 +179,7 @@ export interface WatchRow {
   collector_id: string | null;
   product_name: string | null;
   source: string;
+  last_condition_met: boolean;
   created_at: Date;
   updated_at: Date;
 }
@@ -251,6 +252,7 @@ const WATCH_EDITABLE = new Set([
   "collector_id",
   "product_name",
   "source",
+  "last_condition_met",
 ]);
 
 export async function updateWatch(
@@ -274,6 +276,7 @@ export async function updateWatch(
       | "collector_id"
       | "product_name"
       | "source"
+      | "last_condition_met"
     >
   >,
 ): Promise<WatchRow | null> {

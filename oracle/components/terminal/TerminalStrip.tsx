@@ -119,7 +119,7 @@ export default function TerminalStrip() {
             <span className="text-[var(--term-green)]">sense@sense-core</span>
             <span className="text-[var(--term-dim)]"> ~ % </span>
             <span className="text-[#e5e5ea]">
-              bdata scraper run c_8f2a91 --watch --interval 30s
+              bdata scraper run {process.env.NEXT_PUBLIC_STORE_COLLECTOR_ID ?? 'c_8f2a91'} --watch --interval 30s
             </span>
           </p>
           {logs.map((l, i) => (

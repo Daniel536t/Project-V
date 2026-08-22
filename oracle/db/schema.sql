@@ -71,6 +71,7 @@ CREATE TABLE IF NOT EXISTS watches (
 ALTER TABLE watches ADD COLUMN IF NOT EXISTS collector_id TEXT;
 ALTER TABLE watches ADD COLUMN IF NOT EXISTS product_name TEXT;
 ALTER TABLE watches ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'store';
+ALTER TABLE watches ADD COLUMN IF NOT EXISTS last_condition_met BOOLEAN NOT NULL DEFAULT false;
 
 -- Store (the controllable e-commerce page SENSE watches)
 CREATE TABLE IF NOT EXISTS products (
