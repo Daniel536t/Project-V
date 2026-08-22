@@ -47,6 +47,10 @@ export function generateCollectorId(): string {
 
 export const SCRAPE_INTERVAL_MS = 25 * 1000; // scheduler cadence (20–30s)
 
+// In-memory lock — prevents overlapping scrape passes on the same watch
+// (scheduler tick + admin force-scrape race). Per-process; fine for pm2.
+const activePasses = new Map<string, Promise<RunResult>>();
+
 // ---- condition evaluation ----
 
 export function evaluateCondition(
@@ -255,6 +259,23 @@ async function runLiveScrapePass(watch: WatchRow): Promise<RunResult> {
 
 /** Run one scrape on a watch, auto-healing if it breaks. */
 export async function runScrapePass(watchId: string): Promise<RunResult> {
+  // Serialize passes per watch — prevents the scheduler tick and admin
+  // force-scrape from racing (both firing a heal and getting 409).
+  const existing = activePasses.get(watchId);
+  if (existing) {
+    emitLog("warn", `Scrape on ${watchId} skipped — already in progress`);
+    return existing;
+  }
+  const pass = runScrapePassInner(watchId);
+  activePasses.set(watchId, pass);
+  try {
+    return await pass;
+  } finally {
+    activePasses.delete(watchId);
+  }
+}
+
+async function runScrapePassInner(watchId: string): Promise<RunResult> {
   let watch = await getWatch(watchId);
   if (!watch) throw new Error(`Watch ${watchId} not found`);
 
@@ -295,16 +316,47 @@ export async function runScrapePass(watchId: string): Promise<RunResult> {
     healed = true;
     events.push("heal");
 
-    emitLog("info", "Re-running…");
-    watch = (await getWatch(watchId))!;
-    outcome = await scrapeStore(field);
+    // ---- honest post-heal refresh-wait + polling ----
+    // save_new_template triggers an async refresh job on Bright Data's side.
+    // An immediate re-scrape hits the old broken template. We wait for the
+    // refresh to land, then poll the collector. The terminal narrates every
+    // step honestly — real healing takes a minute.
+    if (heal.source === "brightdata-cli") {
+      emitLog("info", "Heal saved · template refreshing — polling collector…");
+      // Wait 60s for the refresh job to propagate.
+      await new Promise((r) => setTimeout(r, 60_000));
 
-    // If the collector heal didn't restore extraction (collector still returns
-    // 0 on the new template), recover locally with the deterministic selector.
-    // The terminal labels this "local recovery" honestly — same semantic action.
-    if (outcome.broke && heal.newSelector) {
-      emitLog("warn", `Collector heal did not restore extraction — recovering locally with selector ${heal.newSelector}`);
-      outcome = await scrapeLocalRecovery(field, heal.newSelector);
+      let refreshed = false;
+      for (let attempt = 1; attempt <= 4; attempt++) {
+        emitLog("info", `Polling after heal (attempt ${attempt}/4)…`);
+        const poll = await scrapeStore(field);
+        if (!poll.broke && poll.price != null && poll.price > 0) {
+          outcome = poll;
+          refreshed = true;
+          break;
+        }
+        if (attempt < 4) await new Promise((r) => setTimeout(r, 20_000));
+      }
+
+      if (refreshed) {
+        emitLog("success", `Collector refresh complete · extraction restored via Bright Data heal`);
+      } else {
+        // If the collector heal didn't restore extraction after the full
+        // refresh window, recover locally with the deterministic selector.
+        // The terminal labels this "local recovery" honestly.
+        emitLog("warn", `Collector heal did not restore extraction after refresh — recovering locally with selector ${heal.newSelector}`);
+        outcome = await scrapeLocalRecovery(field, heal.newSelector);
+      }
+    } else {
+      // Deterministic heal: re-scrape immediately (no Bright Data refresh to wait for).
+      emitLog("info", "Re-running…");
+      outcome = await scrapeStore(field);
+
+      // If the collector still returns 0, recover locally.
+      if (outcome.broke && heal.newSelector) {
+        emitLog("warn", `Heal did not restore extraction — recovering locally with selector ${heal.newSelector}`);
+        outcome = await scrapeLocalRecovery(field, heal.newSelector);
+      }
     }
 
     if (!outcome.broke) {
@@ -390,7 +442,7 @@ export async function scrapeAllWatches(): Promise<RunResult[]> {
   const watches = (await getWatches()).filter((w) => w.source === "store");
   const results: RunResult[] = [];
   for (const w of watches) {
-    if (w.status === "checking") continue; // avoid overlapping passes
+    if (w.status === "checking" || w.status === "healing") continue; // avoid overlapping passes
     try {
       results.push(await runScrapePass(w.id));
     } catch (e) {
