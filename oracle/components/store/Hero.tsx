@@ -20,25 +20,25 @@ export default function Hero() {
         </button>
       </div>
 
-      {/* Right: three-device cluster — overlapping, tight, Apple-style */}
-      <div className="relative flex flex-1 items-end justify-center">
-        {/* AirPods — lower-left, behind phone */}
+      {/* Right: three-device cluster — overlapping, center-aligned, Apple-style */}
+      <div className="relative flex flex-1 items-center justify-center pr-6">
+        {/* AirPods — left, behind phone, same vertical center */}
         <img
           src={HERO_IMAGES.buds}
           alt="AirPods Pro"
-          className="relative z-0 -mr-8 mb-4 w-[110px] object-contain opacity-95"
+          className="relative z-0 -mr-8 w-[112px] object-contain opacity-95"
         />
         {/* iPhone — tall center hero, overlapping both sides */}
         <img
           src={HERO_IMAGES.phone}
           alt="iPhone 17 Pro"
-          className="relative z-10 w-[190px] object-contain drop-shadow-[0_22px_28px_rgba(0,0,0,0.20)]"
+          className="relative z-10 w-[195px] object-contain drop-shadow-[0_22px_28px_rgba(0,0,0,0.20)]"
         />
-        {/* Watch — lower-right, behind phone */}
+        {/* Watch — right, behind phone, same vertical center */}
         <img
           src={HERO_IMAGES.watch}
           alt="Apple Watch"
-          className="relative z-0 -ml-8 mb-4 w-[110px] object-contain opacity-95"
+          className="relative z-0 -ml-8 w-[112px] object-contain opacity-95"
         />
       </div>
     </div>
