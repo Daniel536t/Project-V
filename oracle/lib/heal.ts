@@ -1,9 +1,12 @@
 // SENSE heal orchestration.
 //
-// Bright Data is the primary recovery path. A CLI `done` response is not
-// treated as success by itself because save_new_template refreshes the
-// collector asynchronously. We verify the collector against the live,
-// product-scoped store page before declaring that the heal landed.
+// Bright Data executes heals as asynchronous refresh jobs with a concurrency
+// cap. SENSE gates heal dispatches on job-clear, verifies healed output against
+// expected values (partial heals — e.g. price correct but stock misread — do
+// not pass verification), retries once with a sharper DOM-diff description, and
+// falls back to deterministic intent-based recovery. Every path preserves the
+// same Collector ID and is logged with full transparency in the terminal and
+// Scar Log.
 
 import { getWatch, updateWatch, logStructuredHeal } from "./db";
 import { getProduct, TEMPLATES } from "./store";
@@ -24,6 +27,8 @@ const HEAL_CLI_TIMEOUT_MS = Number(process.env.SENSE_HEAL_TIMEOUT_MS ?? 240_000)
 const REFRESH_WAIT_MS = 45_000;
 const POLL_INTERVAL_MS = 15_000;
 const POLL_ATTEMPTS = 4;
+const GATE_POLL_INTERVAL_MS = 20_000;
+const GATE_MAX_WAIT_MS = 120_000;
 
 export interface HealOutcome {
   newSelector: string;
@@ -62,10 +67,6 @@ function templateForSelector(selector: string | null): string {
   return "the previous template";
 }
 
-/**
- * The first prompt is generated from the observed selector diff. It contains
- * the semantic diagnosis Bright Data needs, not just the original intent.
- */
 function breakDescription(
   field: string,
   oldSelector: string | null,
@@ -97,6 +98,58 @@ function sharperDescription(
   return `The site redesigned from Template ${oldTemplate} to Template ${newTemplate}. Price moved from ${oldLocation} to ${newLocation}. Restore extraction.`;
 }
 
+// ---- Concurrent-job gate ----
+
+/**
+ * Detect the concurrent-refresh-job rejection from the CLI output. Bright Data
+ * returns a 409-like response when a prior heal's async refresh is still in
+ * flight. This is NOT a planner failure — it's a gate, and the caller must
+ * wait and retry rather than counting it as a failed attempt.
+ */
+function isJobBusy(stdout: string): boolean {
+  return /Another (?:refresh|refactor) job is (?:already|still) in progress/i.test(stdout);
+}
+
+/**
+ * Detect whether the CLI returned a planner failure (status:"error") as
+ * opposed to a timeout or gate rejection. Planner failures mean the AI
+ * planner accepted the job but couldn't fix it — different from a gate.
+ */
+function isPlannerError(result: HealCliResult): boolean {
+  if (result.code !== 0 || result.timedOut) return false;
+  const text = result.stdout ?? "";
+  return /"status"\s*:\s*"error"/.test(text);
+}
+
+/**
+ * Wait for a concurrent refresh job to clear. Called when a heal dispatch
+ * is rejected with the "Another refresh job is already running" message.
+ * Does NOT probe (which would start its own refresh job). Instead, waits
+ * the full gate window and returns, trusting the next dispatch will succeed.
+ */
+async function waitForGateClear(): Promise<void> {
+  const started = Date.now();
+  let pollCount = 0;
+  const maxPolls = Math.ceil(GATE_MAX_WAIT_MS / GATE_POLL_INTERVAL_MS);
+
+  while (Date.now() - started < GATE_MAX_WAIT_MS) {
+    pollCount++;
+    emitLog("info", `⏳ Bright Data refresh job still running — waiting for clear (poll ${pollCount}/${maxPolls})`);
+    await new Promise((r) => setTimeout(r, GATE_POLL_INTERVAL_MS));
+  }
+
+  emitLog("info", "Gate wait complete — dispatching heal");
+}
+
+/**
+ * We do NOT pre-check the gate (any heal CLI call starts a job). Instead,
+ * gate detection happens on the actual dispatch: if the heal is rejected
+ * with the concurrent-job message, we wait and retry. This is called by
+ * dispatchAndVerify when it detects a gate rejection.
+ */
+
+// ---- Verification ----
+
 function cliDone(result: HealCliResult): boolean {
   if (result.code !== 0 || result.timedOut) return false;
   const text = result.stdout ?? "";
@@ -107,8 +160,6 @@ function expectedValueIsValid(
   outcome: ScrapeOutcome,
   expectedPrice: number,
 ): boolean {
-  // A valid Bright Data envelope must contain both fields. The price check
-  // prevents a stale/incorrect product result from being called a heal.
   return (
     !outcome.broke &&
     outcome.price != null &&
@@ -138,32 +189,78 @@ async function waitForRefreshAndPoll(
   return null;
 }
 
+// ---- Dispatch (gate-gated, attempt-counted) ----
+
+/**
+ * Dispatch a single heal and verify. The gate must be clear before this is
+ * called — this function never checks the gate itself. Only a dispatch where
+ * the planner accepts the job counts as an attempt; a gate rejection is
+ * returned as { gated: true } so the caller retries after waiting.
+ */
 async function dispatchAndVerify(
   collectorId: string,
   description: string,
   field: ExtractField,
   expectedPrice: number,
-  attempt: number,
-): Promise<{ result: HealCliResult; verified: ScrapeOutcome | null }> {
-  emitLog("info", `Bright Data heal dispatched · attempt ${attempt}/2 · collector ${collectorId}`);
+  attemptNumber: number,
+): Promise<{ result: HealCliResult; verified: ScrapeOutcome | null; gated: boolean }> {
+  emitLog("info", `Bright Data heal dispatched · attempt ${attemptNumber}/2 · collector ${collectorId}`);
   const result = await healCollectorCli(collectorId, description, HEAL_CLI_TIMEOUT_MS);
+
+  // Gate rejection: the job was busy despite our gate check. Do NOT count
+  // this as an attempt — tell the caller to wait and retry.
+  if (isJobBusy(result.stdout)) {
+    emitLog("warn", "⏳ Refresh job still running — heal rejected by gate");
+    return { result, verified: null, gated: true };
+  }
+
   if (!cliDone(result)) {
-    emitLog(
-      "warn",
-      `Bright Data heal attempt ${attempt} did not complete${result.timedOut ? " before timeout" : ""}`,
-    );
-    return { result, verified: null };
+    if (isPlannerError(result)) {
+      emitLog("warn", `Bright Data heal attempt ${attemptNumber} — planner error (not a gate rejection)`);
+    } else {
+      emitLog("warn", `Bright Data heal attempt ${attemptNumber} did not complete${result.timedOut ? " before timeout" : ""}`);
+    }
+    return { result, verified: null, gated: false };
   }
 
   emitLog("success", "Bright Data heal saved · template refresh queued");
   const verified = await waitForRefreshAndPoll(field, expectedPrice);
-  return { result, verified };
+  return { result, verified, gated: false };
 }
 
 /**
- * Run the real two-attempt heal. The returned `landed` flag is based on a
- * successful post-refresh Bright Data envelope, never merely CLI status.
+ * Run a single heal attempt with full gate-check → dispatch → verify flow.
+ * Returns the attempt result and whether it was counted.
  */
+async function runAttempt(
+  description: string,
+  field: ExtractField,
+  expectedPrice: number,
+  attemptNumber: number,
+  collectorId: string,
+): Promise<{ counted: boolean; verified: ScrapeOutcome | null; result: HealCliResult }> {
+  // No pre-dispatch gate check — any heal CLI call starts a job. Gate
+  // detection happens on the actual dispatch via isJobBusy().
+
+  const { result, verified, gated } = await dispatchAndVerify(
+    collectorId, description, field, expectedPrice, attemptNumber,
+  );
+
+  if (gated) {
+    // Gate rejection — wait for clear, then dispatch again (still same attempt)
+    emitLog("info", "Waiting for refresh job to clear before retrying this attempt…");
+    await waitForGateClear();
+    const retry = await dispatchAndVerify(
+      collectorId, description, field, expectedPrice, attemptNumber,
+    );
+    return { counted: !retry.gated, verified: retry.verified, result: retry.result };
+  }
+
+  return { counted: true, verified, result };
+}
+
+// ---- Main heal entry point ----
+
 export async function healWatch(watchId: string): Promise<HealOutcome> {
   const watch = await getWatch(watchId);
   if (!watch) throw new Error(`Watch ${watchId} not found`);
@@ -188,42 +285,32 @@ export async function healWatch(watchId: string): Promise<HealOutcome> {
   let verifiedOutcome: ScrapeOutcome | null = null;
 
   if (STORE_COLLECTOR_ID) {
-    attemptedHeals = 1;
-    try {
-      const first = await dispatchAndVerify(
-        STORE_COLLECTOR_ID,
-        firstDescription,
-        field,
-        expectedPrice,
-        1,
-      );
-      cliStdout = first.result.stdout;
-      cliCode = first.result.code;
-      cliTimedOut = first.result.timedOut;
-      verifiedOutcome = first.verified;
+    // ---- ATTEMPT 1: DOM-diff description ----
+    const first = await runAttempt(
+      firstDescription, field, expectedPrice, 1, STORE_COLLECTOR_ID,
+    );
+    cliStdout = first.result.stdout;
+    cliCode = first.result.code;
+    cliTimedOut = first.result.timedOut;
+    verifiedOutcome = first.verified;
+    if (first.counted) attemptedHeals = 1;
 
-      if (!verifiedOutcome) {
-        attemptedHeals = 2;
-        emitLog("warn", "First Bright Data heal did not land — retrying with the observed Template diff");
-        emitLog("info", `Heal retry description: "${retryDescription}"`);
-        const second = await dispatchAndVerify(
-          STORE_COLLECTOR_ID,
-          retryDescription,
-          field,
-          expectedPrice,
-          2,
-        );
-        cliStdout = [cliStdout, second.result.stdout].filter(Boolean).join("\n").slice(-600);
-        cliCode = second.result.code;
-        cliTimedOut = second.result.timedOut;
-        verifiedOutcome = second.verified;
-      }
-    } catch (error) {
-      emitLog(
-        "warn",
-        `Bright Data heal request failed · ${error instanceof Error ? error.message : String(error)}`,
+    // ---- ATTEMPT 2 (only if attempt 1 didn't land): sharper template-name description ----
+    if (!verifiedOutcome) {
+      emitLog("warn", "First Bright Data heal did not land — retrying with the observed Template diff");
+      emitLog("info", `Heal retry description: "${retryDescription}"`);
+
+      // The first attempt may have started a refresh job. Gate detection
+      // happens on dispatch; if rejected again, waitForGateClear handles it.
+
+      const second = await runAttempt(
+        retryDescription, field, expectedPrice, 2, STORE_COLLECTOR_ID,
       );
-      if (attemptedHeals < 2) attemptedHeals = 2;
+      cliStdout = [cliStdout, second.result.stdout].filter(Boolean).join("\n").slice(-600);
+      cliCode = second.result.code;
+      cliTimedOut = second.result.timedOut;
+      verifiedOutcome = second.verified;
+      if (second.counted) attemptedHeals = 2;
     }
   } else {
     emitLog("warn", "No Bright Data store collector configured");
