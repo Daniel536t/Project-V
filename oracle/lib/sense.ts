@@ -17,7 +17,7 @@ import {
 } from "./db";
 import { getProduct, selectProduct, TEMPLATES } from "./store";
 import { detectProductId } from "./store-shared";
-import { scrapeStore, parsePrice, type ExtractField } from "./scraper";
+import { scrapeStore, scrapeLocalRecovery, parsePrice, STORE_PUBLIC_URL, type ExtractField, type ScrapeOutcome } from "./scraper";
 import { emitAlert, emitLog } from "./stream";
 import { healWatch, STORE_COLLECTOR_ID } from "./heal";
 import {
@@ -272,10 +272,10 @@ export async function runScrapePass(watchId: string): Promise<RunResult> {
   const product = await getProduct();
   const collectorId = watch.collector_id ?? "c_unknown";
 
-  emitLog("info", `Scraping ${product.name}…`);
+  emitLog("info", `Scraping ${product.name} · ${STORE_PUBLIC_URL}…`);
   await updateWatch(watchId, { status: "checking" });
 
-  let outcome = await scrapeStore(field, watch.selector);
+  let outcome = await scrapeStore(field);
 
   // ---- BREAK: bot detection ----
   if (outcome.broke && outcome.reason === "bot-detection") {
@@ -297,7 +297,15 @@ export async function runScrapePass(watchId: string): Promise<RunResult> {
 
     emitLog("info", "Re-running…");
     watch = (await getWatch(watchId))!;
-    outcome = await scrapeStore(field, heal.newSelector);
+    outcome = await scrapeStore(field);
+
+    // If the collector heal didn't restore extraction (collector still returns
+    // 0 on the new template), recover locally with the deterministic selector.
+    // The terminal labels this "local recovery" honestly — same semantic action.
+    if (outcome.broke && heal.newSelector) {
+      emitLog("warn", `Collector heal did not restore extraction — recovering locally with selector ${heal.newSelector}`);
+      outcome = await scrapeLocalRecovery(field, heal.newSelector);
+    }
 
     if (!outcome.broke) {
       emitLog(
@@ -333,7 +341,7 @@ export async function runScrapePass(watchId: string): Promise<RunResult> {
 
   emitLog(
     "success",
-    `200 OK · price=${price ?? "?"} · stock=${inStock == null ? "?" : inStock}`,
+    `200 OK · price=${price ?? "?"} · stock=${inStock == null ? "?" : inStock} · via ${(outcome as ScrapeOutcome).source}`,
   );
 
   if (alerted) {

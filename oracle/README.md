@@ -12,7 +12,16 @@ The demo is a single screen, split in two:
 
 Beyond the controllable store, SENSE also runs a **live watch on a real site**: say "alert me when an AI-agents story hits the top 5 on Hacker News" and a real Bright Data collector (`c_mt443qoyivn3opd1i`) scrapes the real front page every few minutes, an NVIDIA NIM model classifies which stories match your topic semantically (no selector could do this), and the same condition/alert engine fires. Real URL, real scrapes, real latency.
 
-**The rule above all rules: no simulations.** The store's price lives in a real `products` table in PostgreSQL. The store UI fetches it from `/api/products/active` and subscribes to `/api/store/stream` (SSE). The scraper fetches the store's rendered HTML (`/api/store/html`) and extracts the price with a real CSS selector. When the price changes in the popup, the database changes, the store UI updates, and the next real scrape returns the new price.
+**The rule above all rules: no simulations.** The store's price lives in a real `products` table in PostgreSQL. The store UI fetches it from `/api/products/active` and subscribes to `/api/store/stream` (SSE). The scraper is a **real Bright Data collector** running against the **deployed public store URL** (`https://sense-rho.vercel.app/api/store/html`) — the terminal's `200 OK · price=…` line is parsed from Bright Data's real envelope, not a local regex. When the price changes in the popup, the database changes, the store UI updates, and the next real scrape returns the new price.
+
+**Architecture (the correct production topology):**
+
+| Piece | Where it lives | Why |
+|---|---|---|
+| Store (scrape target) | **Vercel** (`sense-rho.vercel.app`) | Must be publicly reachable by Bright Data's cloud. Stateless, so serverless is perfect. |
+| SENSE runtime (scheduler, SSE, CLI invocations) | **pm2 long-lived process** | `setInterval` dies in serverless functions; SSE breaks across instances. pm2 keeps one process alive. |
+
+The pm2 server runs `bdata scraper run c_… <vercel-url>` → Bright Data's cloud → unlocker network → fetches the Vercel store → returns a real envelope with price/stock → the terminal logs real data → SSE pushes to the browser.
 
 ---
 
@@ -34,32 +43,40 @@ BRIGHT_DATA_API_KEY=your_key_here
 BRIGHT_DATA_SERP_ZONE=your_zone_here    # optional: live SERP search features
 BRIGHT_DATA_COLLECTOR_ID=c_xxxxxxxx     # optional: production collector
 BRIGHT_DATA_STORE_COLLECTOR_ID=c_xxxxxxxx  # the store page's real collector
+STORE_PUBLIC_URL=https://sense-rho.vercel.app/api/store/html  # deployed URL the collector scrapes
 BRIGHT_DATA_HN_COLLECTOR_ID=c_mt443qoyivn3opd1i  # the live Hacker News collector (Phase A)
 NVIDIA_API_KEY=your_nvidia_key          # intent parsing + live story classification (NIM)
 NVIDIA_API_KEY_2=your_backup_key        # fallback key
 OPENROUTER_API_KEY=your_key_here        # optional fallback
 ```
 
-### Real Bright Data heal (production path)
+### Real Bright Data scrape + heal (production path)
 
-Create a collector against the live store page once:
+Create a collector against the **deployed public store URL** once (never localhost —
+Bright Data's cloud cannot reach it):
 
 ```bash
-bdata scraper create "https://claude-coder.duckdns.org/api/store/html" \
-  "Extract the product price and stock status. Return JSON: price (number), in_stock (boolean)."
+bdata scraper create "https://sense-rho.vercel.app/api/store/html" \
+  "Extract the active product card: its price (number, e.g. 999) and stock status (in_stock boolean — true when the page shows In Stock). Return JSON: price (number), in_stock (boolean)."
 ```
 
 Put the returned `c_…` ID in `BRIGHT_DATA_STORE_COLLECTOR_ID`. When it's set:
 
-- every watch carries that **real** collector ID (same ID across heals),
-- heals genuinely run `bdata scraper heal <collector_id> "<original intent>"`
-  via the CLI (`--auto-approve`), and the CLI's output is surfaced in the
-  terminal + scar log,
+- **every scrape** runs `bdata scraper run <collector_id> <vercel-url> --json` via
+  child process (no shell) — the real envelope (`[{ price, in_stock, … }]`) is
+  parsed into the watch's value. The terminal's `200 OK · price=…` line is
+  **Bright Data's truth, not a local render**.
+- **break detection** is real: when a template redesign breaks the collector's
+  learned extraction rules, the envelope's price degrades to `0` — that's the
+  honest break signal (`selector-stale`).
+- **heals genuinely run** `bdata scraper heal <collector_id> "<original intent>"`
+  via the CLI (`--auto-approve --auto-save`), and the CLI's output is surfaced
+  in the terminal + scar log. Same collector ID across heals.
 - if the CLI fails or times out, the heal falls back to deterministic
   re-derivation so the demo never stalls (same semantic action).
-
-The scrape loop itself is fully real against the store's rendered HTML; the
-collector is what the store's page would be scraped by in production.
+- if **no collector is configured**, the scrape falls back to the old
+  in-process render — but it is clearly labelled `via local-fallback` in the
+  terminal and never silently pretends to be the real run.
 
 ### The live watch — a real site, real scrapes (Phase A)
 
@@ -143,7 +160,7 @@ A judge can do all of it unaided — every control is on screen.
 | Store price | `products` table (Postgres) | One source of truth |
 | Store UI | `components/StorePanel.tsx` | Fetches `/api/products` + SSE |
 | DOM redesign | `lib/store.ts` (templates A/B/C) | Real markup change, different selectors |
-| Store scrape | `lib/scraper.ts` | Fetches rendered HTML, extracts by selector |
+| Store scrape | `lib/scraper.ts` → `bdata scraper run` | Real Bright Data envelope against the deployed Vercel store URL |
 | Live scrape | `lib/live.ts` + `bdata scraper run` | Real Bright Data batch job against real HN (~2–3 min) |
 | Semantic classify | `lib/live.ts` + NVIDIA NIM | Which story ranks match the topic ("top N" condition) |
 | Break | selector no longer matches | Empty extraction |

@@ -1,1 +1,0 @@
-{"collector_id":"c_mt443qoyivn3opd1i","name":"sense-hn","status":"done","completed_steps":["prepare_intent_analyzer","planner","discovery","collector_mainatiner","output_schema_generator","code_generator","input_schema_generator","preview_runner","preview_picker"],"view_url":"https://brightdata.com/cp/scrapers/c_mt443qoyivn3opd1i","created_at":"2026-08-22T08:24:15.586Z"}
