@@ -1,27 +1,35 @@
+'use client';
+
+import { StoreStreamProvider } from '@/lib/StoreStreamContext';
+import { SenseUiProvider } from '@/lib/SenseUiContext';
 import Sidebar from '@/components/sense/Sidebar';
 import ChatPanel from '@/components/sense/ChatPanel';
 import StorePanel from '@/components/store/StorePanel';
 import TerminalStrip from '@/components/terminal/TerminalStrip';
-import ScarLogSlideOver from '@/components/ScarLogSlideOver';
+import ScarLogPanel from '@/components/sense/ScarLogPanel';
 
 export default function Home() {
   return (
-    <main className="h-screen w-screen flex overflow-hidden bg-white">
-      {/* LEFT — SENSE (46%) */}
-      <section className="relative w-[46%] min-w-[580px] flex shrink-0">
-        <Sidebar />
-        <ChatPanel />
-        <ScarLogSlideOver />
-      </section>
+    <StoreStreamProvider>
+      <SenseUiProvider>
+        <main className="flex h-screen w-screen overflow-hidden bg-white">
+          {/* LEFT — SENSE (46%) */}
+          <section className="relative flex w-[46%] min-w-[580px] shrink-0">
+            <Sidebar />
+            <ChatPanel />
+            <ScarLogPanel />
+          </section>
 
-      {/* THE BLACK LINE — exact, 8px, full height, pure black */}
-      <div className="w-[8px] bg-black shrink-0" aria-hidden />
+          {/* THE BLACK LINE — exact, 8px, full height, pure black */}
+          <div className="w-[8px] shrink-0 bg-black" aria-hidden />
 
-      {/* RIGHT — STORE + TERMINAL (fills rest) */}
-      <section className="flex-1 flex flex-col min-w-0 relative">
-        <StorePanel />
-        <TerminalStrip />
-      </section>
-    </main>
+          {/* RIGHT — STORE + TERMINAL (fills rest) */}
+          <section className="relative flex min-w-0 flex-1 flex-col">
+            <StorePanel />
+            <TerminalStrip />
+          </section>
+        </main>
+      </SenseUiProvider>
+    </StoreStreamProvider>
   );
 }

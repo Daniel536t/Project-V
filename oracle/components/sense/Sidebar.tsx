@@ -11,6 +11,7 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { APP_NAME, USER_NAME, USER_PLAN } from '@/lib/config';
+import { useSenseUi } from '@/lib/SenseUiContext';
 
 const CHATS = [
   { t: 'Sony A7IV under $800',   ago: '2m ago' },
@@ -27,6 +28,7 @@ const TOOLS = [
 ];
 
 export default function Sidebar() {
+  const { focusInput, setScarOpen } = useSenseUi();
   return (
     <aside className="w-[218px] shrink-0 bg-[var(--sidebar)] border-r border-[var(--line)] flex flex-col">
       {/* macOS traffic lights — exact colors and spacing */}
@@ -51,7 +53,7 @@ export default function Sidebar() {
       {/* New Watch pill (mirrors "New Chat") */}
       <div className="px-3 pt-1 pb-2">
         <button
-          onClick={() => window.dispatchEvent(new CustomEvent('sense:focus-input'))}
+          onClick={focusInput}
           className="w-full flex items-center gap-2 rounded-full bg-[var(--bubble)] px-3.5 py-2 hover:bg-[#e9e9ec] transition-colors"
         >
           <MessageSquareText size={16} className="text-[var(--ios-blue)]" />
@@ -82,9 +84,7 @@ export default function Sidebar() {
           <button
             key={label}
             onClick={() => {
-              if (label === 'Scar Log') {
-                window.dispatchEvent(new CustomEvent('sense:open-scar-log'));
-              }
+              if (label === 'Scar Log') setScarOpen(true);
             }}
             className="w-full flex items-center gap-2.5 rounded-lg px-2 py-[7px] hover:bg-[var(--bubble)] transition-colors"
           >

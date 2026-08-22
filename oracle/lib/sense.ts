@@ -6,8 +6,17 @@
 // returns null → we detect the break, re-derive the selector from the original
 // intent (the same thing Bright Data's heal does), log a scar, and re-scrape.
 
-import { getWatch, getWatches, updateWatch, createWatch, logScrape, type WatchRow } from "./db";
-import { getProduct, TEMPLATES } from "./store";
+import {
+  getWatch,
+  getWatches,
+  updateWatch,
+  createWatch,
+  logScrape,
+  deleteAllWatches,
+  type WatchRow,
+} from "./db";
+import { getProduct, selectProduct, TEMPLATES } from "./store";
+import { detectProductId } from "./store-shared";
 import { scrapeStore, parsePrice, type ExtractField } from "./scraper";
 import { emitAlert, emitLog } from "./stream";
 import { healWatch, STORE_COLLECTOR_ID } from "./heal";
@@ -80,10 +89,22 @@ export async function createWatchFromIntent(input: {
   target: string | null;
   query?: string | null;
 }): Promise<WatchRow> {
+  // If the intent names a different product than the one the store currently
+  // shows, switch the store first so the scraper targets the right page.
+  const requestedId = input.query ? detectProductId(input.query) : null;
+  const activeBefore = await getProduct();
+  if (requestedId && requestedId !== activeBefore.id) {
+    await selectProduct(requestedId);
+  }
+
   const product = await getProduct();
   const t = TEMPLATES[product.template] ?? TEMPLATES.A;
   const field: ExtractField = input.field === "stock" ? "stock" : "price";
   const selector = field === "price" ? t.priceSelector : t.stockSelector;
+
+  // Single active watch: the demo models one collector at a time, so a new
+  // watch supersedes any prior one (the store targets one product at a time).
+  await deleteAllWatches();
 
   // Use the real Bright Data store collector when configured, so the watch's
   // c_ ID is the production collector (same ID across heals — the whole point).

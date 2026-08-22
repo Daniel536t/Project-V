@@ -6,8 +6,10 @@ import { callLLM } from "./llm-router";
 import { MODELS } from "./constants";
 import { createWatchFromIntent, runScrapePass, type RunResult } from "./sense";
 import { deleteWatch, getWatches, type WatchRow } from "./db";
+import { FEATURED_PRODUCTS, detectProductName } from "./store-shared";
 
 const STORE_URL = "/api/store/html";
+const DEFAULT_PRODUCT = "iPhone 17 Pro";
 
 export interface ParsedIntent {
   product_name: string;
@@ -31,7 +33,7 @@ export function parseIntentDeterministic(msg: string): ParsedIntent | null {
 
   if (field === "stock") {
     const condition = /(out of|sold out|gone|unavailable)/i.test(m) ? "out_of_stock" : "in_stock";
-    return { product_name: "iPhone 17 Pro", target_price: null, condition, field };
+    return { product_name: detectProductName(m), target_price: null, condition, field };
   }
 
   // price: "drops below $120" → target 120, condition "<"
@@ -51,7 +53,7 @@ export function parseIntentDeterministic(msg: string): ParsedIntent | null {
   }
 
   if (target == null) return null;
-  return { product_name: "iPhone 17 Pro", target_price: target, condition, field };
+  return { product_name: detectProductName(m), target_price: target, condition, field };
 }
 
 // ---- NIM structured-JSON parser ----
@@ -60,7 +62,7 @@ function nimSystemPrompt(): string {
   return (
     "Extract a watch request from the user message into JSON with exactly these keys:\n" +
     '{"product_name": string, "target_price": number|null, "condition": string, "field": "price"|"stock"}\n' +
-    '- product_name: the product being watched (e.g. "iPhone 17 Pro").\n' +
+    `- product_name: the product being watched, one of: ${FEATURED_PRODUCTS.map((p) => p.name).join(", ")}.\n` +
     '- target_price: the numeric threshold, or null for stock watches.\n' +
     '- condition: one of "<", "<=", ">", ">=", "==", "in_stock", "out_of_stock".\n' +
     '- field: "price" if it is a price threshold, "stock" if it is about availability.\n' +
@@ -88,7 +90,7 @@ export async function parseIntentNim(msg: string): Promise<ParsedIntent | null> 
     const condition = String(obj.condition ?? "<");
     const field = obj.field === "stock" ? "stock" : "price";
     return {
-      product_name: obj.product_name ?? "iPhone 17 Pro",
+      product_name: obj.product_name ?? DEFAULT_PRODUCT,
       target_price: obj.target_price ?? null,
       condition,
       field,

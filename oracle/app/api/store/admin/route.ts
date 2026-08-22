@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
-import { getProduct, nextTemplate, toState, updateProduct } from "@/lib/store";
+import {
+  getProduct,
+  selectProduct,
+  toState,
+  updateProduct,
+  TEMPLATE_ORDER,
+} from "@/lib/store";
 import { scrapeAllWatches } from "@/lib/sense";
 
 export const runtime = "nodejs";
@@ -19,13 +25,27 @@ export async function POST(req: Request) {
   try {
     let updated;
 
-    if (action === "redesign") {
-      const product = await getProduct();
-      updated = await updateProduct({ template: nextTemplate(product.template) });
+    if (action === "select_product") {
+      const productId = body.productId as string | undefined;
+      if (!productId) {
+        return NextResponse.json({ error: "productId is required" }, { status: 400 });
+      }
+      updated = await selectProduct(productId);
+    } else if (action === "redesign") {
+      const template = body.template as string | undefined;
+      if (template && TEMPLATE_ORDER.includes(template as (typeof TEMPLATE_ORDER)[number])) {
+        updated = await updateProduct({ template });
+      } else {
+        // Backwards-compatible: cycle to the next template.
+        const product = await getProduct();
+        const i = TEMPLATE_ORDER.indexOf(product.template as (typeof TEMPLATE_ORDER)[number]);
+        const next = TEMPLATE_ORDER[(i + 1) % TEMPLATE_ORDER.length];
+        updated = await updateProduct({ template: next });
+      }
     } else if (action === "set_price") {
-      const price = Number(body.value);
+      const price = Number(body.price ?? body.value);
       if (!Number.isFinite(price)) {
-        return NextResponse.json({ error: "value must be a number" }, { status: 400 });
+        return NextResponse.json({ error: "price must be a number" }, { status: 400 });
       }
       updated = await updateProduct({ price });
     } else if (action === "set_stock") {

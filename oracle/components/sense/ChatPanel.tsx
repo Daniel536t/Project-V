@@ -13,15 +13,10 @@ import {
   TrendingDown,
 } from 'lucide-react';
 import { COLLECTOR_ID, SCRAPE_INTERVAL_S, USER_NAME } from '@/lib/config';
-
-interface AlertEvent {
-  watch_id: string;
-  product_name: string;
-  value: string;
-  field: string;
-  operator: string;
-  target: string | null;
-}
+import { useSharedStore } from '@/lib/StoreStreamContext';
+import { useSenseUi } from '@/lib/SenseUiContext';
+import { featuredById, suggestedWatchTarget } from '@/lib/store-shared';
+import type { AlertEvent } from '@/lib/useStoreStream';
 
 interface ScarRow {
   watch_id: string | null;
@@ -44,20 +39,23 @@ interface Message {
   scars?: ScarRow[];
 }
 
+const iphone = featuredById('iphone-17-pro')!;
+const airpods = featuredById('airpods-pro-2')!;
+
 const SUGGESTIONS = [
   {
     icon: TrendingDown,
     color: '#007aff',
     title: 'Watch a price',
     sub: 'any product, any threshold',
-    fill: 'Alert me when the iPhone 17 Pro drops below $949',
+    fill: `Alert me when the ${iphone.name} drops below $${suggestedWatchTarget(iphone.price)}`,
   },
   {
     icon: Package,
     color: '#34c759',
     title: 'Track a restock',
     sub: "get pinged the second it's back",
-    fill: 'Tell me the moment AirPods Pro are back in stock',
+    fill: `Tell me the moment ${airpods.name} are back in stock`,
   },
   {
     icon: Activity,
@@ -94,49 +92,71 @@ const fmtTime = (iso: string | null) => {
     : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
+function statusChip(status: string | null, collectorId: string | null, scars: number) {
+  switch (status) {
+    case 'broken':
+      return { dot: 'var(--danger)', label: '● Broken', cls: 'text-[var(--danger)]' };
+    case 'healing':
+      return { dot: 'var(--amber)', label: '● Healing…', cls: 'animate-pulse text-[var(--amber)]' };
+    case 'healed':
+      return {
+        dot: 'var(--success)',
+        label: `● Healed · Scar #${scars}`,
+        cls: 'text-[var(--success)]',
+      };
+    case 'alerted':
+      return { dot: 'var(--alert)', label: '● Alert sent', cls: 'text-[var(--alert)]' };
+    case 'checking':
+      return { dot: 'var(--gray-2)', label: '● Checking', cls: 'text-[var(--gray-1)]' };
+    default:
+      return {
+        dot: 'var(--success)',
+        label: `● Watching · ${collectorId ?? COLLECTOR_ID}`,
+        cls: 'text-[var(--gray-1)]',
+      };
+  }
+}
+
 export default function ChatPanel() {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState('');
   const [thinking, setThinking] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Subscribe to alerts (SSE) — fire the tingle the instant a condition is met.
-  useEffect(() => {
-    const es = new EventSource('/api/watches/stream');
-    es.onmessage = (e) => {
-      try {
-        const evt = JSON.parse(e.data) as AlertEvent;
-        setMessages((prev) => [
-          ...prev,
-          { id: uid(), role: 'agent', kind: 'alert', text: '', alert: evt },
-        ]);
-      } catch {
-        /* ignore malformed frames */
-      }
-    };
-    return () => es.close();
-  }, []);
+  const { latestAlert, watchStatus, collectorId, scars } = useSharedStore();
+  const { draft, setDraft, focusTick, focusInput } = useSenseUi();
 
-  // Sidebar "New Watch" focuses the composer.
+  // Focus the composer when the sidebar "New Watch" or a product card asks.
   useEffect(() => {
-    const onFocus = () => inputRef.current?.focus();
-    window.addEventListener('sense:focus-input', onFocus);
-    return () => window.removeEventListener('sense:focus-input', onFocus);
-  }, []);
+    if (focusTick > 0) inputRef.current?.focus();
+  }, [focusTick]);
 
-  async function handleSend(textOverride?: string) {
-    const msg = (textOverride ?? input).trim();
+  // Alerts arrive via the shared stream — push the tingle message when a new
+  // one lands (deduped by watch+value so a re-render never double-fires).
+  const lastAlertKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (!latestAlert) return;
+    const key = `${latestAlert.watch_id}:${latestAlert.value}:${latestAlert.field}`;
+    if (lastAlertKey.current === key) return;
+    lastAlertKey.current = key;
+    setMessages((prev) => [
+      ...prev,
+      { id: uid(), role: 'agent', kind: 'alert', text: '', alert: latestAlert },
+    ]);
+  }, [latestAlert]);
+
+  async function handleSend() {
+    const msg = draft.trim();
     if (!msg || thinking) return;
 
     setMessages((prev) => [...prev, { id: uid(), role: 'user', kind: 'normal', text: msg }]);
-    setInput('');
+    setDraft('');
     setThinking(true);
 
     try {
       // Scar Log intent → render the immune-system ledger.
       if (/scar log|healed? (yourself|itself)|heal history|every time you healed/i.test(msg)) {
-        const r = await fetch('/api/ledger');
+        const r = await fetch('/api/heal-ledger');
         const data = await r.json();
         const scars: ScarRow[] = data.scars ?? [];
         setMessages((prev) => [
@@ -254,6 +274,9 @@ export default function ChatPanel() {
   }
 
   const empty = messages.length === 0;
+  const chip = watchStatus
+    ? statusChip(watchStatus, collectorId, scars)
+    : null;
 
   return (
     <div className="flex min-w-0 flex-1 flex-col bg-white">
@@ -274,7 +297,10 @@ export default function ChatPanel() {
             {SUGGESTIONS.map((s) => (
               <button
                 key={s.title}
-                onClick={() => setInput(s.fill)}
+                onClick={() => {
+                  setDraft(s.fill);
+                  focusInput();
+                }}
                 className="flex items-center gap-3 rounded-2xl border border-[var(--line)] bg-white px-4 py-3.5 text-left transition-colors hover:bg-[var(--sidebar)]"
               >
                 <s.icon size={18} style={{ color: s.color }} className="shrink-0" />
@@ -397,11 +423,17 @@ export default function ChatPanel() {
 
       {/* ── Input bar ── */}
       <div className="shrink-0 px-6 pb-5">
+        {chip && (
+          <div className="mb-2 flex h-6 w-fit items-center gap-1.5 rounded-full bg-[var(--bubble)] px-3 text-[11.5px]">
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: chip.dot }} />
+            <span className={chip.cls}>{chip.label}</span>
+          </div>
+        )}
         <div className="flex h-12 items-center gap-2 rounded-full bg-[var(--bubble)] pl-5 pr-2">
           <input
             ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
             placeholder="Message SENSE…"
             className="flex-1 bg-transparent text-[15px] text-[var(--ink)] outline-none placeholder:text-[var(--gray-2)]"
@@ -409,10 +441,10 @@ export default function ChatPanel() {
           <Mic size={18} className="shrink-0 text-[var(--gray-1)]" />
           <button
             onClick={() => handleSend()}
-            disabled={!input.trim() || thinking}
+            disabled={!draft.trim() || thinking}
             aria-label="Send"
             className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-white transition-colors"
-            style={{ background: !input.trim() || thinking ? '#c7c7cc' : 'var(--ios-blue)' }}
+            style={{ background: !draft.trim() || thinking ? '#c7c7cc' : 'var(--ios-blue)' }}
           >
             <ArrowUp size={17} strokeWidth={2.4} />
           </button>

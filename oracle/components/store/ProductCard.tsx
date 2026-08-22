@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Bookmark } from 'lucide-react';
 import ProductImage from './ProductImage';
+import { useSenseUi } from '@/lib/SenseUiContext';
+import { suggestedWatchTarget } from '@/lib/store-shared';
 import type { StoreProduct } from '@/lib/useStoreStream';
 
 interface Props {
@@ -25,6 +27,7 @@ const STATUS_LABEL: Record<string, string> = {
 export default function ProductCard({ product, template, watched, watchStatus, className }: Props) {
   const [flash, setFlash] = useState(false);
   const prev = useRef<string | null>(watchStatus);
+  const { setDraft, focusInput } = useSenseUi();
 
   // One green pulse on broken → healed.
   useEffect(() => {
@@ -40,6 +43,23 @@ export default function ProductCard({ product, template, watched, watchStatus, c
   const price = product.livePrice ?? product.originalPrice;
   const changed = product.livePrice != null && product.livePrice !== product.originalPrice;
 
+  // Clicking a card switches the store (and scraper target) to this product,
+  // then prefills the SENSE chat with a ready-to-send watch request. Chat
+  // remains the single watch-creation path.
+  function handleClick() {
+    if (!watched) {
+      fetch('/api/store/admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'select_product', productId: product.id }),
+      }).catch(() => {});
+    }
+    setDraft(
+      `Alert me when the ${product.name} drops below $${suggestedWatchTarget(product.originalPrice)}`,
+    );
+    focusInput();
+  }
+
   let ring = '';
   if (watched) {
     if (watchStatus === 'broken') ring = 'ring-1 ring-[var(--danger)]/30 animate-glitch';
@@ -54,6 +74,13 @@ export default function ProductCard({ product, template, watched, watchStatus, c
       className={`relative grid aspect-[1/1.08] place-items-center rounded-[14px] bg-[var(--card)] p-6 ${ring}`}
     >
       <ProductImage src={product.image} alt={product.name} className="max-h-full w-full" />
+      {product.inStock === false && (
+        <span className="absolute inset-0 grid place-items-center rounded-[14px] bg-white/50">
+          <span className="rounded-full border border-[var(--line)] bg-white/90 px-2.5 py-1 text-[12px] font-medium text-[var(--gray-1)]">
+            Currently unavailable
+          </span>
+        </span>
+      )}
       <Bookmark size={15} className="absolute right-2.5 top-2.5 text-[var(--gray-1)]" />
     </div>
   );
@@ -74,7 +101,7 @@ export default function ProductCard({ product, template, watched, watchStatus, c
   // only ever hit the active product's price).
   if (!watched) {
     return (
-      <div className={className}>
+      <div className={`${className ?? ''} cursor-pointer`} onClick={handleClick}>
         {imageWrap}
         <h3 className="mt-2.5 text-[13.5px] font-semibold leading-tight">{product.name}</h3>
         <div className="mt-0.5 text-[12.5px] text-[var(--gray-1)]">${product.originalPrice}</div>
@@ -117,7 +144,7 @@ export default function ProductCard({ product, template, watched, watchStatus, c
   // Template B — "Modern"
   if (template === 'B') {
     return (
-      <div className={className}>
+      <div className={`${className ?? ''} cursor-pointer`} onClick={handleClick}>
         <div className="pricing-section">
           {imageWrap}
           <h3 data-testid="product-name" className="mt-2.5 text-[13.5px] font-semibold leading-tight">
@@ -139,7 +166,7 @@ export default function ProductCard({ product, template, watched, watchStatus, c
   // Template C — "Schema"
   if (template === 'C') {
     return (
-      <div className={className}>
+      <div className={`${className ?? ''} cursor-pointer`} onClick={handleClick}>
         {imageWrap}
         <h3 itemProp="name" className="mt-2.5 text-[13.5px] font-semibold leading-tight">
           {product.name}
@@ -172,7 +199,7 @@ export default function ProductCard({ product, template, watched, watchStatus, c
 
   // Template A — "Classic"
   return (
-    <div className={className}>
+    <div className={`${className ?? ''} cursor-pointer`} onClick={handleClick}>
       <div className="product-container">
         {imageWrap}
         <h3 className="product-title mt-2.5 text-[13.5px] font-semibold leading-tight">

@@ -32,6 +32,7 @@ export async function GET() {
       botDetection: active.bot_detection,
       watchedProductId: watch ? active.id : null,
       watchStatus: watch ? watch.status : null,
+      collectorId: watch ? (watch.collector_id ?? null) : null,
       scars: watches.reduce((n, w) => n + (w.scar_count ?? 0), 0),
     });
   } catch (e) {
@@ -42,6 +43,7 @@ export async function GET() {
         botDetection: false,
         watchedProductId: null,
         watchStatus: null,
+        collectorId: null,
         scars: 0,
         error: e instanceof Error ? e.message : String(e),
       },
