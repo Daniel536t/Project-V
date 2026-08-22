@@ -14,7 +14,7 @@ export default function Home() {
       <SenseUiProvider>
         <main className="flex h-screen w-screen overflow-hidden bg-white">
           {/* LEFT — SENSE (46%) */}
-          <section className="relative flex w-[46%] min-w-[580px] shrink-0">
+          <section className="relative flex w-[46%] min-w-[580px] shrink-0 overflow-hidden">
             <Sidebar />
             <ChatPanel />
             <ScarLogPanel />

@@ -42,10 +42,12 @@ export default function ProductCard({ product, template, watched, watchStatus, c
 
   const price = product.livePrice ?? product.originalPrice;
   const changed = product.livePrice != null && product.livePrice !== product.originalPrice;
+  // Only the active (watched) card carries the template's semantic selectors —
+  // the scraper must extract exactly one price, from the watched product.
+  const semantic = watched;
 
   // Clicking a card switches the store (and scraper target) to this product,
-  // then prefills the SENSE chat with a ready-to-send watch request. Chat
-  // remains the single watch-creation path.
+  // then prefills the SENSE chat with a ready-to-send watch request.
   function handleClick() {
     if (!watched) {
       fetch('/api/store/admin', {
@@ -62,20 +64,28 @@ export default function ProductCard({ product, template, watched, watchStatus, c
 
   let ring = '';
   if (watched) {
-    if (watchStatus === 'broken') ring = 'ring-1 ring-[var(--danger)]/30 animate-glitch';
-    else if (watchStatus === 'healing') ring = 'ring-1 ring-[var(--amber)]/40';
-    else if (watchStatus === 'healed') ring = 'ring-1 ring-[var(--success)]';
-    else ring = 'ring-1 ring-[var(--ios-blue)]/40';
+    if (watchStatus === 'broken') ring = 'ring-2 ring-[var(--danger)]/50 animate-glitch';
+    else if (watchStatus === 'healing') ring = 'ring-2 ring-[var(--amber)]/50';
+    else if (watchStatus === 'healed') ring = 'ring-2 ring-[var(--success)]';
+    else ring = 'ring-2 ring-[var(--ios-blue)]/50';
   }
-  if (flash) ring = `ring-1 ring-[var(--success)] animate-heal-flash`;
+  if (flash) ring = `ring-2 ring-[var(--success)] animate-heal-flash`;
 
-  const imageWrap = (
-    <div
-      className={`relative grid aspect-[1/1.08] place-items-center rounded-[14px] bg-[var(--card)] p-6 ${ring}`}
-    >
-      <ProductImage src={product.image} alt={product.name} className="max-h-full w-full" />
+  const rawPrice = `$${price}`;
+  const stock = product.inStock ? 'In Stock' : 'Out of Stock';
+
+  // ---- shared pieces -------------------------------------------------------
+
+  const imageTile = (tileClass: string, imgClass = '') => (
+    <div className={`relative shrink-0 overflow-hidden ${tileClass} ${ring}`}>
+      <ProductImage
+        src={product.image}
+        alt={product.name}
+        objectFit="cover"
+        className={`h-full w-full ${imgClass}`}
+      />
       {product.inStock === false && (
-        <span className="absolute inset-0 grid place-items-center rounded-[14px] bg-white/50">
+        <span className="absolute inset-0 grid place-items-center rounded-2xl bg-white/50">
           <span className="rounded-full border border-[var(--line)] bg-white/90 px-2.5 py-1 text-[12px] font-medium text-[var(--gray-1)]">
             Currently unavailable
           </span>
@@ -97,22 +107,6 @@ export default function ProductCard({ product, template, watched, watchStatus, c
     </div>
   );
 
-  // Non-watched card: plain markup, no semantic selectors (the scraper must
-  // only ever hit the active product's price).
-  if (!watched) {
-    return (
-      <div className={`${className ?? ''} cursor-pointer`} onClick={handleClick}>
-        {imageWrap}
-        <h3 className="mt-2.5 text-[13.5px] font-semibold leading-tight">{product.name}</h3>
-        <div className="mt-0.5 text-[12.5px] text-[var(--gray-1)]">${product.originalPrice}</div>
-        {swatches}
-      </div>
-    );
-  }
-
-  const rawPrice = `$${price}`;
-  const stock = product.inStock ? 'In Stock' : 'Out of Stock';
-
   const priceLine = (priceEl: React.ReactNode) => (
     <div className="mt-0.5 flex items-baseline gap-1.5">
       {changed && <span className="text-[11px] font-semibold text-[var(--success)]">Now</span>}
@@ -125,7 +119,7 @@ export default function ProductCard({ product, template, watched, watchStatus, c
     </div>
   );
 
-  const caption = (
+  const caption = watched ? (
     <span
       className={`mt-0.5 block text-[10px] ${
         watchStatus === 'broken' || watchStatus === 'alerted'
@@ -139,79 +133,143 @@ export default function ProductCard({ product, template, watched, watchStatus, c
     >
       {STATUS_LABEL[watchStatus ?? 'watching'] ?? '● Watching'}
     </span>
-  );
+  ) : null;
 
-  // Template B — "Modern"
+  const nameEl = (extra = '') => {
+    const base = `text-[13.5px] font-semibold leading-tight ${extra}`.trim();
+    if (template === 'B') {
+      return semantic ? (
+        <h3 data-testid="product-name" className={base}>
+          {product.name}
+        </h3>
+      ) : (
+        <h3 className={base}>{product.name}</h3>
+      );
+    }
+    if (template === 'C') {
+      return semantic ? (
+        <h3 itemProp="name" className={base}>
+          {product.name}
+        </h3>
+      ) : (
+        <h3 className={base}>{product.name}</h3>
+      );
+    }
+    return semantic ? (
+      <h3 className={`product-title ${base}`}>{product.name}</h3>
+    ) : (
+      <h3 className={base}>{product.name}</h3>
+    );
+  };
+
+  const priceEl = (extra = '') => {
+    if (template === 'B') {
+      return semantic ? (
+        <span data-test="current-price" className={`mono text-[18px] font-semibold ${extra}`}>
+          {rawPrice}
+        </span>
+      ) : (
+        <span className={`mono text-[18px] font-semibold ${extra}`}>{rawPrice}</span>
+      );
+    }
+    if (template === 'C') {
+      return semantic ? (
+        <span className={`display-price mono text-[18px] font-semibold ${extra}`}>{rawPrice}</span>
+      ) : (
+        <span className={`mono text-[18px] font-semibold ${extra}`}>{rawPrice}</span>
+      );
+    }
+    return semantic ? (
+      <span className={`price text-[12.5px] text-[var(--gray-1)] ${extra}`}>{rawPrice}</span>
+    ) : (
+      <span className={`text-[12.5px] text-[var(--gray-1)] ${extra}`}>{rawPrice}</span>
+    );
+  };
+
+  const stockEl = () => {
+    if (!semantic) return null;
+    if (template === 'A') return <span className="stock-status sr-only">{stock}</span>;
+    return <span className="availability-badge sr-only">{stock}</span>;
+  };
+
+  // ---- Template B — "Modern" (horizontal, image left, big mono price) ------
   if (template === 'B') {
-    return (
-      <div className={`${className ?? ''} cursor-pointer`} onClick={handleClick}>
-        <div className="pricing-section">
-          {imageWrap}
-          <h3 data-testid="product-name" className="mt-2.5 text-[13.5px] font-semibold leading-tight">
-            {product.name}
-          </h3>
-          {priceLine(
-            <span data-test="current-price" className="text-[12.5px] text-[var(--gray-1)]">
-              {rawPrice}
-            </span>,
-          )}
-          <span className="availability-badge sr-only">{stock}</span>
+    const inner = (
+      <div className="flex items-center gap-3 rounded-2xl border border-[var(--line)] bg-white p-3 shadow-sm">
+        {imageTile('aspect-square w-1/2 rounded-xl bg-[var(--card)]')}
+        <div className="min-w-0 flex-1">
+          {nameEl()}
+          {priceLine(priceEl())}
+          {stockEl()}
           {caption}
           {swatches}
         </div>
       </div>
     );
-  }
-
-  // Template C — "Schema"
-  if (template === 'C') {
     return (
       <div className={`${className ?? ''} cursor-pointer`} onClick={handleClick}>
-        {imageWrap}
-        <h3 itemProp="name" className="mt-2.5 text-[13.5px] font-semibold leading-tight">
-          {product.name}
-        </h3>
-        {priceLine(
-          <span className="display-price text-[12.5px] text-[var(--gray-1)]">{rawPrice}</span>,
-        )}
-        <span className="availability-badge sr-only">{stock}</span>
-        {caption}
-        {swatches}
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
-              '@context': 'https://schema.org',
-              '@type': 'Product',
-              name: product.name,
-              offers: {
-                '@type': 'Offer',
-                price: String(price),
-                priceCurrency: 'USD',
-                availability: product.inStock ? 'InStock' : 'OutOfStock',
-              },
-            }),
-          }}
-        />
+        {semantic ? <div className="pricing-section">{inner}</div> : inner}
       </div>
     );
   }
 
-  // Template A — "Classic"
-  return (
-    <div className={`${className ?? ''} cursor-pointer`} onClick={handleClick}>
-      <div className="product-container">
-        {imageWrap}
-        <h3 className="product-title mt-2.5 text-[13.5px] font-semibold leading-tight">
-          {product.name}
-        </h3>
-        {priceLine(
-          <span className="price text-[12.5px] text-[var(--gray-1)]">{rawPrice}</span>,
+  // ---- Template C — "Schema" (feature card, image right, tagline) ----------
+  if (template === 'C') {
+    const inner = (
+      <div className="flex items-center gap-3 rounded-2xl bg-[var(--card)] p-3">
+        <div className="min-w-0 flex-1">
+          {nameEl()}
+          <p className="mt-0.5 text-[11px] leading-snug text-[var(--gray-1)]">{product.tagline}</p>
+          {priceLine(priceEl())}
+          {stockEl()}
+          {caption}
+          {swatches}
+        </div>
+        {imageTile('aspect-square w-1/2 rounded-xl bg-white')}
+        {semantic && (
+          <script
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{
+              __html: JSON.stringify({
+                '@context': 'https://schema.org',
+                '@type': 'Product',
+                name: product.name,
+                offers: {
+                  '@type': 'Offer',
+                  price: String(price),
+                  priceCurrency: 'USD',
+                  availability: product.inStock ? 'InStock' : 'OutOfStock',
+                },
+              }),
+            }}
+          />
         )}
-        <span className="stock-status sr-only">{stock}</span>
-        {caption}
-        {swatches}
       </div>
+    );
+    return (
+      <div className={`${className ?? ''} cursor-pointer`} onClick={handleClick}>
+        {inner}
+      </div>
+    );
+  }
+
+  // ---- Template A — "Classic" (vertical, image top) ------------------------
+  const inner = (
+    <>
+      {imageTile(
+        'aspect-square rounded-2xl bg-[var(--card)]',
+        'transition-transform duration-300 group-hover:scale-[1.03]',
+      )}
+      {nameEl('mt-2.5')}
+      {priceLine(priceEl())}
+      {stockEl()}
+      {caption}
+      {swatches}
+    </>
+  );
+  return (
+    <div className={`${className ?? ''} group cursor-pointer`} onClick={handleClick}>
+      {semantic ? <div className="product-container">{inner}</div> : inner}
     </div>
   );
 }

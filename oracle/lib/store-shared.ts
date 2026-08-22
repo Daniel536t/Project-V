@@ -27,7 +27,7 @@ export const PRODUCT_IMAGES = {
 // from the same local product shots — deliberately SEPARATE and well-organized,
 // not a mashed-together collage.
 export const HERO_IMAGES = {
-  phone: "/products/iphone-17-pro.png",
+  phone: "/products/hero-phone.png",
   buds: "/products/airpods-pro.png",
   watch: "/products/watch-s9.png",
 };

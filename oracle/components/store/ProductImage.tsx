@@ -7,10 +7,12 @@ export default function ProductImage({
   src,
   alt,
   className,
+  objectFit = 'contain',
 }: {
   src: string;
   alt: string;
   className?: string;
+  objectFit?: 'contain' | 'cover';
 }) {
   const [err, setErr] = useState(false);
 
@@ -26,7 +28,7 @@ export default function ProductImage({
     <img
       src={src}
       alt={alt}
-      className={`object-contain ${className ?? ''}`}
+      className={`${objectFit === 'cover' ? 'object-cover' : 'object-contain'} ${className ?? ''}`}
       onError={() => setErr(true)}
     />
   );

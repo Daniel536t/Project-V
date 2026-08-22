@@ -9,6 +9,15 @@ interface Props {
 }
 
 export default function ProductGrid({ products, template, watchedProductId, watchStatus }: Props) {
+  // Each template reflows the grid: A = dense 5-up vertical, B = 3-up
+  // horizontal, C = 2-up feature cards. The layout change is the "redesign".
+  const cols =
+    template === 'C'
+      ? 'grid-cols-2'
+      : template === 'B'
+        ? 'grid-cols-3'
+        : 'grid-cols-5 max-[1400px]:grid-cols-4';
+
   return (
     <div>
       <div className="mt-7 flex items-baseline justify-between">
@@ -17,7 +26,7 @@ export default function ProductGrid({ products, template, watchedProductId, watc
           See All
         </a>
       </div>
-      <div className="mt-3 grid grid-cols-5 gap-4 max-[1400px]:grid-cols-4">
+      <div className={`mt-3 grid gap-4 ${cols}`}>
         {products.map((p, i) => (
           <ProductCard
             key={p.id}
@@ -25,7 +34,7 @@ export default function ProductGrid({ products, template, watchedProductId, watc
             template={template}
             watched={p.id === watchedProductId}
             watchStatus={watchStatus}
-            className={i === 4 ? 'max-[1400px]:hidden' : ''}
+            className={template === 'A' && i === 4 ? 'max-[1400px]:hidden' : ''}
           />
         ))}
       </div>

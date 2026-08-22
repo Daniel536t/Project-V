@@ -293,7 +293,7 @@ export default function ChatPanel() {
           </h1>
           <p className="mt-2 text-[15px] text-[var(--gray-1)]">What should I watch for you?</p>
 
-          <div className="mt-8 grid w-[470px] grid-cols-2 gap-3">
+          <div className="mt-8 grid w-full max-w-[470px] grid-cols-2 gap-3">
             {SUGGESTIONS.map((s) => (
               <button
                 key={s.title}
