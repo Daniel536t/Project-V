@@ -32,7 +32,8 @@ const TOOLS = [
 export default function Sidebar() {
   const { focusInput, setScarOpen, setTimeMachineOpen } = useSenseUi();
   return (
-    <aside className="w-[218px] shrink-0 bg-[var(--sense-sidebar)] border-r border-[var(--sense-line)] flex flex-col">
+    <aside className="w-[218px] shrink-0 bg-[var(--sense-sidebar)] border-r border-[var(--sense-line)] flex flex-col relative">
+        <div className="sense-texture" aria-hidden="true" />
       {/* macOS traffic lights — exact colors and spacing */}
       <div className="flex items-center gap-2 px-4 pt-4 pb-1">
         <span className="w-3 h-3 rounded-full bg-[#ff5f57]" />
@@ -98,7 +99,7 @@ export default function Sidebar() {
       </nav>
 
       {/* User card — pinned bottom */}
-      <div className="m-3 flex items-center gap-2.5 rounded-xl bg-[var(--sense-card)] p-2.5 border border-[var(--sense-line)]">
+      <div className="m-3 flex items-center gap-2.5 rounded-xl bg-[var(--sense-card)] p-2.5 border border-[var(--sense-line)] sense-card-depth">
         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#0aa5ff] via-[#7b61ff] to-[#c86bff] shrink-0" />
         <div className="min-w-0">
           <p className="text-[13px] font-semibold leading-tight truncate">{USER_NAME} Brighten</p>

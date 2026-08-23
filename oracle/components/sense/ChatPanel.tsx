@@ -390,7 +390,16 @@ export default function ChatPanel() {
     : null;
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col bg-[var(--sense-bg)]">
+    <div className="flex min-w-0 flex-1 flex-col bg-[var(--sense-bg)] relative">
+        {/* Subtle grain texture — the surface feels alive */}
+        <div className="sense-texture" aria-hidden="true" />
+        {/* Floating micro-particles — barely visible, breathing */}
+        <div className="sense-particle sense-particle-1" style={{ top: '15%', left: '20%' }} />
+        <div className="sense-particle sense-particle-2" style={{ top: '55%', left: '75%' }} />
+        <div className="sense-particle sense-particle-3" style={{ top: '30%', left: '60%' }} />
+        <div className="sense-particle sense-particle-1" style={{ top: '70%', left: '35%', animationDelay: '3s' }} />
+        <div className="sense-particle sense-particle-2" style={{ top: '85%', left: '15%', animationDelay: '5s' }} />
+        <div className="sense-particle sense-particle-3" style={{ top: '10%', left: '80%', animationDelay: '7s' }} />
       {/* ── Empty state ── */}
       {empty ? (
         <div className="flex flex-1 flex-col items-center justify-center px-6">
@@ -412,7 +421,7 @@ export default function ChatPanel() {
                   setDraft(s.fill);
                   focusInput();
                 }}
-                className="flex items-center gap-3 rounded-2xl border border-[var(--sense-line)] bg-[var(--sense-card)] px-4 py-3.5 text-left transition-colors hover:bg-[var(--sense-hover)]"
+                className="flex items-center gap-3 rounded-2xl border border-[var(--sense-line)] bg-[var(--sense-card)] px-4 py-3.5 text-left transition-colors hover:bg-[var(--sense-hover)] sense-card-depth"
               >
                 <s.icon size={18} style={{ color: s.color }} className="shrink-0" />
                 <span className="min-w-0">
