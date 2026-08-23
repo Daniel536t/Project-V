@@ -49,12 +49,12 @@ export function parseExternalIntentDeterministic(msg: string): ExternalIntent | 
     return { kind: "external", url, label: `${domain} · stock`, field: "stock", operator, target: null };
   }
 
-  // Price intent
-  const targetM = m.match(/(?:under|below|less than|over|above|more than|drops?\s+to|hits?|at|==)\s*\$?\s*(\d+(?:\.\d+)?)/i);
+  // Price intent — handle $2,500, $1,299.99, etc.
+  const targetM = m.match(/(?:under|below|less than|over|above|more than|drops?\s+to|hits?|at|==)\s*\$?\s*(\d[\d,]*(?:\.\d+)?)/i);
   let operator = "changed"; // default: any change
   let target: string | null = null;
   if (targetM) {
-    target = targetM[1];
+    target = targetM[1].replace(/,/g, "");
     if (/(over|above|more than)/i.test(targetM[0])) operator = ">";
     else if (/==|exactly/i.test(targetM[0])) operator = "==";
     else operator = "<";
