@@ -36,22 +36,12 @@ export async function POST(req: Request) {
       source,
     });
 
-    // Live + External watches: real Bright Data collectors with batch latency
-    // (~2–3 min). Fire the first pass async so the chat confirms immediately.
-    if (source === "live" || source === "external") {
-      void runScrapePass(watch.id);
-      return NextResponse.json({ watch, alerted: false }, { status: 201 });
-    }
-
-    // First real scrape immediately so the watch shows a live price. The alert
-    // is suppressed on this pass: if the condition is already met, the chat
-    // says so conversationally ("heads up") instead of firing a repeating
-    // alert. conditionMet reports the raw evaluation for that message.
-    const run = await runScrapePass(watch.id, { suppressAlert: true });
-    return NextResponse.json(
-      { watch: run.watch, alerted: run.conditionMet, conditionMet: run.conditionMet },
-      { status: 201 },
-    );
+    // All watches return immediately — store/live/external. Real scrapes
+    // take 30-120s (Bright Data CLI batch mode) and would block the HTTP
+    // response otherwise. The in-process scheduler (pm2) fires the first
+    // scrape within 20s.
+    void runScrapePass(watch.id, { suppressAlert: true });
+    return NextResponse.json({ watch, alerted: false }, { status: 201 });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : String(e) },

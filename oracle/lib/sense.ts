@@ -15,9 +15,10 @@ import {
   deleteWatchesBySource,
   type WatchRow,
 } from "./db";
-import { getProduct, selectProduct, TEMPLATES } from "./store";
+import { getProduct, selectProduct, TEMPLATES, renderStoreHtml } from "./store";
 import { detectProductId } from "./store-shared";
 import { scrapeStore, scrapeLocalRecovery, parsePrice, storeScrapeUrl, type ExtractField, type ScrapeOutcome } from "./scraper";
+import { extractBySelector } from "./local-extractor";
 import { emitAlert, emitLog } from "./stream";
 import { healWatch, STORE_COLLECTOR_ID } from "./heal";
 import {
@@ -557,7 +558,31 @@ async function runScrapePassInner(
   emitLog("info", `Scraping ${product.name} · ${storeScrapeUrl(product.id)}…`);
   await updateWatch(watchId, { status: "checking" });
 
-  let outcome = await scrapeStore(field);
+  // First: try the watch's stored selector against the current store HTML.
+  // If it returns null, the selector is stale (template changed) → break.
+  // The real Bright Data collector path does this naturally; the local
+  // fallback must simulate it with the watch's selector, not the template's.
+  const watchSelector = watch.selector;
+  let outcome: ScrapeOutcome;
+  if (watchSelector) {
+    const html = renderStoreHtml(product, product.id);
+    const watchValue = extractBySelector(html, watchSelector);
+    if (watchValue == null) {
+      outcome = { broke: true, reason: "selector-stale", value: null, price: null, inStock: null, source: "local-fallback" };
+    } else {
+      // Selector still works — extract full data using template selectors
+      const t = TEMPLATES[product.template] ?? TEMPLATES.A;
+      const price = parsePrice(extractBySelector(html, t.priceSelector));
+      const inStockRaw = extractBySelector(html, t.stockSelector);
+      const inStock = inStockRaw ? /in stock/i.test(inStockRaw) : null;
+      const value = field === "stock"
+        ? (inStock === true ? "In Stock" : inStock === false ? "Out of Stock" : null)
+        : `$${price?.toFixed(2) ?? "0.00"}`;
+      outcome = { broke: false, value, price, inStock, source: "local-fallback" };
+    }
+  } else {
+    outcome = await scrapeStore(field);
+  }
 
   // ---- BREAK: bot detection ----
   if (outcome.broke && outcome.reason === "bot-detection") {
