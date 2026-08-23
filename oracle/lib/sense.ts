@@ -143,25 +143,37 @@ export async function createWatchFromIntent(input: {
         env: { ...process.env, BRIGHTDATA_API_KEY: process.env.BRIGHT_DATA_API_KEY ?? "" },
       });
       let stdout = "";
+      let stderr = "";
       child.stdout.on("data", (d: Buffer) => (stdout += d.toString()));
+      child.stderr.on("data", (d: Buffer) => (stderr += d.toString()));
+      // bdata scraper create takes 60-120s: npx download (15-30s) + AI generation (30-90s).
+      // The CLI polls up to 600 steps internally, so give it generous headroom.
+      const timer = setTimeout(() => {
+        child.kill("SIGKILL");
+        emitLog("error", `Collector creation timed out after 300s`);
+        reject(new Error(`bdata scraper create timed out`));
+      }, 300_000);
       child.on("close", (code) => {
+        clearTimeout(timer);
         if (code !== 0) {
-          emitLog("error", `Collector creation failed with code ${code}`);
-          reject(new Error(`bdata scraper create exited ${code}`));
+          // Surface stderr so we can diagnose real failures (API key, network, etc.)
+          const errSnippet = (stderr || stdout).slice(-200).replace(/\n/g, " ");
+          emitLog("error", `Collector creation failed (exit ${code}): ${errSnippet}`);
+          reject(new Error(`bdata scraper create exited ${code}: ${errSnippet}`));
           return;
         }
-        // Parse the JSON output for collector_id or id
+        // The v0.3+ envelope is { collector_id, name, status, ... }. The legacy
+        // --legacy-output path emits bare AI-progress JSON. Try structured first.
         try {
-          const obj = JSON.parse(stdout.replace(/^[^{]*/, "").replace(/[^}]*$/, "}"));
+          const cleaned = stdout.replace(/^[^{]*/, "").replace(/[^}]*$/, "}");
+          const obj = JSON.parse(cleaned);
           const id = obj.collector_id || obj.id;
           if (id) { resolve(String(id)); return; }
-          // Try finding c_ pattern in stdout
-          const m = stdout.match(/(c_[a-z0-9]{12,20})/);
-          if (m) { resolve(m[1]); return; }
         } catch {}
+        // Fallback: grep for c_ pattern anywhere in output
         const m = stdout.match(/(c_[a-z0-9]{12,20})/);
-        if (m) resolve(m[1]);
-        else reject(new Error(`Could not parse collector ID from create output`));
+        if (m) { resolve(m[1]); return; }
+        reject(new Error(`Could not parse collector ID from create output`));
       });
     });
 
