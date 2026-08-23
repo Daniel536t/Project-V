@@ -210,7 +210,7 @@ export default function ChatPanel() {
   const inputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const { latestAlert, watchStatus, collectorId, scars } = useSharedStore();
+  const { latestAlert, latestHeal, watchStatus, collectorId, scars } = useSharedStore();
   const { draft, setDraft, focusTick, focusInput, resetAt } = useSenseUi();
 
   // Auto-scroll on new messages
@@ -269,6 +269,30 @@ export default function ChatPanel() {
       if (d.voice) setMessages((prev) => prev.map((m) => m.alert && m.alert.watch_id === alert.watch_id && !m.text ? { ...m, text: d.voice } : m));
     }).catch(() => {});
   }, [latestAlert]);
+
+  // Heal events — agent announces breaks and recoveries in chat
+  const lastHealKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (!latestHeal) return;
+    const key = `${latestHeal.watch_id}:${latestHeal.stage}:${latestHeal.scar_number}`;
+    if (lastHealKey.current === key) return;
+    lastHealKey.current = key;
+    const h = latestHeal;
+
+    if (h.stage === 'break') {
+      setMessages((prev) => [...prev, {
+        id: uid(), role: 'agent', kind: 'normal',
+        text: `⚠️ **${h.product_name}** — the page just changed. Template switched from **${h.old_template ?? 'Classic'} → ${h.template_label}**. Price extraction broke (the old selector no longer matches). Recovering now…`,
+        ts: Date.now(),
+      }]);
+    } else {
+      setMessages((prev) => [...prev, {
+        id: uid(), role: 'agent', kind: 'normal',
+        text: `✅ **Healed.** Selector updated from \`${h.old_selector ?? '(none)'}\` → \`${h.new_selector}\`. Same collector, zero downtime. Scar #${h.scar_number} logged. Still watching ${h.product_name}.`,
+        ts: Date.now(),
+      }]);
+    }
+  }, [latestHeal]);
 
   async function handleSend() {
     const msg = draft.trim();

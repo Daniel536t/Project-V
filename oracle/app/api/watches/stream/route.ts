@@ -1,26 +1,28 @@
-import { onAlert, type AlertEvent } from "@/lib/stream";
+import { onAlert, onHeal, type AlertEvent, type HealEvent } from "@/lib/stream";
 import { ensureScheduler } from "@/lib/scheduler";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// SSE stream of alerts, so the SENSE chat fires the tingle the instant a
-// condition is met (no polling).
+// SSE stream of alerts + heal events, so the SENSE chat fires the tingle the
+// instant a condition is met OR a break/heal recovers (no polling).
 export async function GET(req: Request) {
   ensureScheduler();
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
-      const send = (event: AlertEvent) => {
+      const send = (type: string, data: unknown) => {
         try {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+          controller.enqueue(encoder.encode(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`));
         } catch {
           /* closed */
         }
       };
 
-      const unsubscribe = onAlert(send);
+      const unsubAlert = onAlert((event: AlertEvent) => send("alert", event));
+      const unsubHeal = onHeal((event: HealEvent) => send("heal", event));
+
       const heartbeat = setInterval(() => {
         try {
           controller.enqueue(encoder.encode(`: ping\n\n`));
@@ -31,7 +33,8 @@ export async function GET(req: Request) {
 
       req.signal.addEventListener("abort", () => {
         clearInterval(heartbeat);
-        unsubscribe();
+        unsubAlert();
+        unsubHeal();
       });
     },
   });

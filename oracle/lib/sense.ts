@@ -19,7 +19,7 @@ import { getProduct, selectProduct, TEMPLATES, renderStoreHtml } from "./store";
 import { detectProductId } from "./store-shared";
 import { scrapeStore, scrapeLocalRecovery, parsePrice, storeScrapeUrl, type ExtractField, type ScrapeOutcome } from "./scraper";
 import { extractBySelector } from "./local-extractor";
-import { emitAlert, emitLog } from "./stream";
+import { emitAlert, emitLog, emitHeal } from "./stream";
 import { healWatch, STORE_COLLECTOR_ID } from "./heal";
 import {
   HN_COLLECTOR_ID,
@@ -634,6 +634,15 @@ async function runScrapePassInner(
     emitLog("warn", "!! Empty extraction — break detected");
     events.push("break");
 
+    // Calculate old template info for the chat agent
+    const oldSelector = watch.selector;
+    const oldTemplateKey = (() => {
+      for (const [k, t] of Object.entries(TEMPLATES)) {
+        if (t.priceSelector === oldSelector || t.stockSelector === oldSelector) return k;
+      }
+      return null;
+    })();
+
     // Tier-1 heal: deterministic selector recovery — instant (<100ms).
     // Bright Data verification runs in the background; does NOT block.
     const heal = await healWatch(watchId);
@@ -647,6 +656,33 @@ async function runScrapePassInner(
 
     // Re-read for updated scar_count.
     watch = (await getWatch(watchId))!;
+
+    const newTemplate = TEMPLATES[product.template] ?? TEMPLATES.A;
+
+    // Tell the chat agent what happened
+    emitHeal({
+      watch_id: watchId,
+      product_name: product.name,
+      stage: "break",
+      old_selector: oldSelector,
+      new_selector: heal.newSelector,
+      old_template: oldTemplateKey,
+      new_template: product.template,
+      scar_number: watch.scar_count,
+      template_label: newTemplate.label,
+    });
+
+    emitHeal({
+      watch_id: watchId,
+      product_name: product.name,
+      stage: "heal",
+      old_selector: oldSelector,
+      new_selector: heal.newSelector,
+      old_template: oldTemplateKey,
+      new_template: product.template,
+      scar_number: watch.scar_count,
+      template_label: newTemplate.label,
+    });
 
     if (!outcome.broke && outcome.value != null) {
       const bdNote = STORE_COLLECTOR_ID ? " · Bright Data verifying in background" : "";

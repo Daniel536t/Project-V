@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import type { HealEvent } from './stream';
 
 export interface StoreProduct {
   id: string;
@@ -39,6 +40,7 @@ export interface StoreState {
   collectorId: string | null;
   scars: number;
   latestAlert: AlertEvent | null;
+  latestHeal: HealEvent | null;
 }
 
 const INITIAL: StoreState = {
@@ -50,6 +52,7 @@ const INITIAL: StoreState = {
   collectorId: null,
   scars: 0,
   latestAlert: null,
+  latestHeal: null,
 };
 
 /**
@@ -65,7 +68,7 @@ export function useStoreStream(): StoreState {
   useEffect(() => {
     let alive = true;
     let es: EventSource | null = null;
-    let alertEs: EventSource | null = null;
+    let watcherEs: EventSource | null = null;
 
     async function load() {
       try {
@@ -101,9 +104,28 @@ export function useStoreStream(): StoreState {
       }
     };
 
-    // Alerts (SSE) — the tingle source for the chat.
-    alertEs = new EventSource('/api/watches/stream');
-    alertEs.onmessage = (e) => {
+    // Alerts + heal events (SSE) — the trigger source for the chat.
+    watcherEs = new EventSource('/api/watches/stream');
+    watcherEs.addEventListener('alert', (e: MessageEvent) => {
+      try {
+        const evt = JSON.parse(e.data) as AlertEvent;
+        if (!alive) return;
+        setState((s) => ({ ...s, latestAlert: evt }));
+      } catch {
+        /* ignore malformed frames */
+      }
+    });
+    watcherEs.addEventListener('heal', (e: MessageEvent) => {
+      try {
+        const evt = JSON.parse(e.data) as HealEvent;
+        if (!alive) return;
+        setState((s) => ({ ...s, latestHeal: evt }));
+      } catch {
+        /* ignore malformed frames */
+      }
+    });
+    // Backward-compat: unnamed messages behave like 'alert' event
+    watcherEs.onmessage = (e) => {
       try {
         const evt = JSON.parse(e.data) as AlertEvent;
         if (!alive) return;
@@ -119,7 +141,7 @@ export function useStoreStream(): StoreState {
     return () => {
       alive = false;
       es?.close();
-      alertEs?.close();
+      watcherEs?.close();
       clearInterval(t);
     };
   }, []);

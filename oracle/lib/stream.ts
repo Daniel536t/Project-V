@@ -38,11 +38,26 @@ export interface AlertEvent {
   collector_id?: string | null;
 }
 
+export interface HealEvent {
+  watch_id: string;
+  product_name: string;
+  /** "break" — the old selector stopped matching. "heal" — selector recovered. */
+  stage: "break" | "heal";
+  old_selector: string | null;
+  new_selector: string;
+  old_template: string | null;
+  new_template: string;
+  scar_number: number;
+  /** Human label for the template ("Classic", "Modern", "Schema"). */
+  template_label: string;
+}
+
 type Listener<T> = (event: T) => void;
 
 const logListeners = new Set<Listener<LogEvent>>();
 const storeListeners = new Set<Listener<ProductState>>();
 const alertListeners = new Set<Listener<AlertEvent>>();
+const healListeners = new Set<Listener<HealEvent>>();
 
 const LOG_HISTORY: LogEvent[] = [];
 const LOG_HISTORY_MAX = 300;
@@ -99,4 +114,15 @@ export function emitAlert(event: AlertEvent): void {
 export function onAlert(listener: Listener<AlertEvent>): () => void {
   alertListeners.add(listener);
   return () => alertListeners.delete(listener);
+}
+
+export function emitHeal(event: HealEvent): void {
+  for (const l of Array.from(healListeners)) {
+    try { l(event); } catch { /* ignore */ }
+  }
+}
+
+export function onHeal(listener: Listener<HealEvent>): () => void {
+  healListeners.add(listener);
+  return () => healListeners.delete(listener);
 }
