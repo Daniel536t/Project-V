@@ -16,3 +16,6 @@ export const SCRAPE_INTERVAL_S = 30;
  */
 export const SENSE_RUNTIME_URL =
   process.env.NEXT_PUBLIC_SENSE_RUNTIME_URL ?? '';
+
+/** Domains that are our own store — never scrape these as external URLs. */
+export const STORE_DOMAINS = ['sense-rho.vercel.app', 'claude-coder.duckdns.org'];

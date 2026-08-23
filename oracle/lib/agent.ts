@@ -4,6 +4,7 @@
 
 import { callLLM } from "./llm-router";
 import { MODELS } from "./constants";
+import { STORE_DOMAINS } from "./config";
 import { createWatchFromIntent, runScrapePass, type RunResult } from "./sense";
 import { deleteWatch, getWatches, type WatchRow } from "./db";
 import { FEATURED_PRODUCTS, detectProductName } from "./store-shared";
@@ -38,10 +39,15 @@ export function parseExternalIntentDeterministic(msg: string): ExternalIntent | 
   if (!urlM) return null;
   const url = urlM[1].replace(/[.,;:!?)]+$/, "");
 
+  // If the URL is our own store (Vercel or pm2 box), don't treat it as
+  // external. The store needs a pinned collector that knows the product DOM —
+  // a fresh Bright Data collector against a React SPA would always fail.
+  // Let the store parser handle it instead.
+  const domain = (() => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; } })();
+  if (STORE_DOMAINS.some((d) => domain === d || domain.endsWith("." + d))) return null;
+
   const hasWatch = /(watch|track|monitor|scrape|keep an eye on|alert|notify|ping|tell me)/i.test(m);
   if (!hasWatch) return null;
-
-  const domain = (() => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; } })();
 
   // Stock intent?
   if (/(stock|restock|back in|available|inventory|out of stock|sold out)/i.test(m)) {
