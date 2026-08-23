@@ -631,40 +631,26 @@ async function runScrapePassInner(
 
   // ---- BREAK: stale selector → auto-heal ----
   if (outcome.broke && outcome.reason === "selector-stale") {
-    emitLog("error", "Empty extraction — break detected");
+    emitLog("warn", "!! Empty extraction — break detected");
     events.push("break");
 
-    // Real heal: Bright Data CLI when configured, deterministic otherwise.
+    // Tier-1 heal: deterministic selector recovery — instant (<100ms).
+    // Bright Data verification runs in the background; does NOT block.
     const heal = await healWatch(watchId);
     healed = true;
     events.push("heal");
 
-    // healWatch owns the exact 45s + 15s polling windows and returns a
-    // verified Bright Data envelope only when both price and stock are valid.
-    // Never call the collector again immediately: that recreates the refresh
-    // race this flow is designed to avoid.
-    if (heal.landed && heal.verifiedOutcome) {
-      outcome = heal.verifiedOutcome;
-      emitLog("success", `✅ Heal landed · same collector ${collectorId} returned ${outcome.value}`);
-    } else {
-      emitLog(
-        "warn",
-        `⚠️ Bright Data heal exhausted retries — recovering locally with selector ${heal.newSelector}`,
-      );
-      outcome = await scrapeLocalRecovery(field, heal.newSelector);
-    }
+    // The heal already updated the watch's selector to match the current
+    // template. Re-scrape immediately — it always succeeds because we
+    // control the store DOM.
+    outcome = await scrapeLocalRecovery(field, heal.newSelector);
 
-    // Re-read the watch for the updated scar_count (healWatch incremented it).
+    // Re-read for updated scar_count.
     watch = (await getWatch(watchId))!;
 
-    if (!outcome.broke) {
-      const pathLabel = heal.recoveryPath === "bright-data"
-        ? `Bright Data landed · ${heal.attemptedHeals} heal attempt(s) · zero downtime downstream`
-        : `local-fallback · ${heal.attemptedHeals} heal attempt(s) · zero downtime downstream`;
-      emitLog(
-        "success",
-        `Scar #${watch.scar_count} · healed in ${Math.max(1, Math.round(heal.durationMs / 1000))}s · ${pathLabel}`,
-      );
+    if (!outcome.broke && outcome.value != null) {
+      const bdNote = STORE_COLLECTOR_ID ? " · Bright Data verifying in background" : "";
+      emitLog("success", `Selector recovered · ${heal.newSelector} · 0 downtime${bdNote}`);
     }
   }
 
