@@ -138,7 +138,9 @@ async function backgroundBrightDataHeal(
 
   // Single attempt, no retries — the deterministic selector already saved us.
   // If the heal lands, upgrade the scar. If not, it's already logged honestly.
-  emitLog("info", `🧪 Background Bright Data heal · collector ${STORE_COLLECTOR_ID}`);
+  const bgMsg = `🧪 Background Bright Data heal · collector ${STORE_COLLECTOR_ID}`;
+  emitLog("info", bgMsg);
+  console.log(bgMsg); // visible in pm2 logs
 
   try {
     const result = await healCollectorCli(STORE_COLLECTOR_ID, description, HEAL_CLI_TIMEOUT_MS);
@@ -178,7 +180,9 @@ async function backgroundBrightDataHeal(
       emitLog("info", "Bright Data verification did not land — scar stays as local-fallback (selector already recovered)");
     }
   } catch (err) {
-    emitLog("info", `Bright Data background heal failed: ${err instanceof Error ? err.message : String(err)}`);
+    const errMsg = `Bright Data background heal failed: ${err instanceof Error ? err.message : String(err)}`;
+    emitLog("error", errMsg);
+    console.error(errMsg); // visible in pm2 logs
   }
 }
 
