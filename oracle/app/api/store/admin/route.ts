@@ -7,6 +7,8 @@ import {
   TEMPLATE_ORDER,
 } from "@/lib/store";
 import { scrapeAllWatches } from "@/lib/sense";
+import { deleteAllWatches, getPool } from "@/lib/db";
+import { emitLog, emitStore } from "@/lib/stream";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -58,6 +60,16 @@ export async function POST(req: Request) {
       updated = await updateProduct({ stock_level: Math.round(level) });
     } else if (action === "set_bot_detection") {
       updated = await updateProduct({ bot_detection: Boolean(body.value) });
+    } else if (action === "reset_demo") {
+      // Full demo reset: product to $999/A/in-stock, clear all watches/scars/history
+      await updateProduct({ price: 999, in_stock: true, template: "A", bot_detection: false });
+      await deleteAllWatches();
+      await getPool().query("DELETE FROM heal_ledger");
+      await getPool().query("DELETE FROM scrape_history");
+      updated = await getProduct();
+      emitLog("info", "Demo state reset → $999 · Template A · clean");
+      emitStore(toState(updated));
+      return NextResponse.json({ status: "reset", ...toState(updated) });
     } else {
       return NextResponse.json({ error: `unknown action: ${action}` }, { status: 400 });
     }

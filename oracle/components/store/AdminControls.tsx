@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Wrench, X } from 'lucide-react';
+import { RotateCcw, Wrench, X } from 'lucide-react';
 import { useSharedStore } from '@/lib/StoreStreamContext';
 import { FEATURED_PRODUCTS } from '@/lib/store-shared';
 import type { StoreProduct } from '@/lib/useStoreStream';
@@ -163,6 +163,18 @@ export default function AdminControls() {
                 </p>
               </div>
             </div>
+
+            {/* Reset */}
+            <button
+              onClick={() => {
+                if (!confirm('Reset all watches, scars, and price to demo defaults?')) return;
+                post({ action: 'reset_demo' }).then(() => setOpen(false));
+              }}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 bg-gray-100 py-2 text-[13px] text-gray-700 transition hover:bg-gray-200"
+            >
+              <RotateCcw size={13} />
+              Reset Demo State
+            </button>
 
             <p className="mt-4 border-t border-[var(--line)] pt-3 text-center text-[11px] text-[var(--gray-2)]">
               No simulations. The scraper reads exactly what you see.
