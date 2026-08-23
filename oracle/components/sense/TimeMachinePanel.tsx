@@ -234,8 +234,9 @@ export default function TimeMachinePanel() {
                   </div>
 
                   <p className="mt-2 text-[11px] text-[var(--gray-1)] leading-snug">
-                    Bright Data planner could not map organic {config.eraFrom}→{config.eraTo} redesign.
-                    Recovered via deterministic intent-based healing.
+                    {h.recovery_path === 'bright-data'
+                      ? `Bright Data heal restored extraction across ${config.eraTo - config.eraFrom} years of organic redesign. Same collector, healed in ${h.recovery_seconds ?? '?'}s.`
+                      : `Bright Data planner could not map organic ${config.eraFrom}→${config.eraTo} redesign. Recovered via deterministic intent-based healing.`}
                   </p>
 
                   {h.description && (
