@@ -80,6 +80,19 @@ body {
 }
 .animate-heal-flash { animation: sense-heal-flash 0.6s ease-out; }
 
+/* Subtle alert ring pulse — draws attention without screaming */
+@keyframes alert-pulse {
+  0%, 100% { box-shadow: 0 0 0 2px var(--alert), 0 0 0 0px rgba(255,55,95,0.3); }
+  50% { box-shadow: 0 0 0 2px var(--alert), 0 0 0 6px rgba(255,55,95,0.08); }
+}
+
+/* Gentle hand wave for the greeting emoji */
+@keyframes wave {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-10deg); }
+  75% { transform: rotate(14deg); }
+}
+
 /* Depth on cards — a hair of inner warmth, like pressed paper */
 .sense-card-depth {
   box-shadow:
