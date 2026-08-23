@@ -4,6 +4,7 @@ import {
   parseIntentNim,
   parseLiveIntentDeterministic,
   parseLiveIntentNim,
+  parseExternalIntentDeterministic,
   type ParsedIntent,
   type LiveIntent,
 } from "@/lib/agent";
@@ -15,6 +16,19 @@ export async function POST(req: Request) {
   const message = body?.message;
   if (!message || typeof message !== "string") {
     return NextResponse.json({ error: "message is required" }, { status: 400 });
+  }
+
+  // External URL watch — any URL the user pastes ("watch amazon.com/...")
+  const ext = parseExternalIntentDeterministic(message);
+  if (ext) {
+    return NextResponse.json({
+      kind: "external",
+      url: ext.url,
+      label: ext.label,
+      field: ext.field,
+      operator: ext.operator,
+      target: ext.target,
+    });
   }
 
   // Order matters: the STORE deterministic parser runs FIRST — the demo's

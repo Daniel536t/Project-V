@@ -23,7 +23,8 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "invalid json" }, { status: 400 });
   try {
-    const source: "store" | "live" = body.source === "live" ? "live" : "store";
+    const source: "store" | "live" | "external" =
+      body.source === "live" ? "live" : body.source === "external" ? "external" : "store";
     const watch = await createWatchFromIntent({
       label: body.label ?? "watch",
       url: body.url ?? "/api/store/html",
@@ -35,10 +36,9 @@ export async function POST(req: Request) {
       source,
     });
 
-    // Live watches scrape on Bright Data's batch cadence (~2–3 min): fire the
-    // first pass async so the chat confirms immediately. Store watches scrape
-    // instantly (in-process).
-    if (source === "live") {
+    // Live + External watches: real Bright Data collectors with batch latency
+    // (~2–3 min). Fire the first pass async so the chat confirms immediately.
+    if (source === "live" || source === "external") {
       void runScrapePass(watch.id);
       return NextResponse.json({ watch, alerted: false }, { status: 201 });
     }

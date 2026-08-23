@@ -19,6 +19,50 @@ export interface ParsedIntent {
   field: "price" | "stock";
 }
 
+// ---- External watch (arbitrary URL) ----
+
+export interface ExternalIntent {
+  kind: "external";
+  url: string;
+  label: string;
+  field: "price" | "stock";
+  operator: string;
+  target: string | null;
+}
+
+/** Deterministic parser: "watch <url>" + optional price/stock conditions. */
+export function parseExternalIntentDeterministic(msg: string): ExternalIntent | null {
+  const m = msg.trim();
+  // Find a URL in the message
+  const urlM = m.match(/(https?:\/\/[^\s]+)/i);
+  if (!urlM) return null;
+  const url = urlM[1].replace(/[.,;:!?)]+$/, "");
+
+  const hasWatch = /(watch|track|monitor|scrape|keep an eye on|alert|notify|ping|tell me)/i.test(m);
+  if (!hasWatch) return null;
+
+  const domain = (() => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; } })();
+
+  // Stock intent?
+  if (/(stock|restock|back in|available|inventory|out of stock|sold out)/i.test(m)) {
+    const operator = /(out of|sold out|gone|unavailable)/i.test(m) ? "out_of_stock" : "in_stock";
+    return { kind: "external", url, label: `${domain} · stock`, field: "stock", operator, target: null };
+  }
+
+  // Price intent
+  const targetM = m.match(/(?:under|below|less than|over|above|more than|drops?\s+to|hits?|at|==)\s*\$?\s*(\d+(?:\.\d+)?)/i);
+  let operator = "changed"; // default: any change
+  let target: string | null = null;
+  if (targetM) {
+    target = targetM[1];
+    if (/(over|above|more than)/i.test(targetM[0])) operator = ">";
+    else if (/==|exactly/i.test(targetM[0])) operator = "==";
+    else operator = "<";
+  }
+
+  return { kind: "external", url, label: `${domain} · ${operator === "changed" ? "any change" : operator + " $" + target}`, field: "price", operator, target };
+}
+
 // ---- LIVE semantic watch ("watch HN and alert me when X hits the top N") ----
 
 export interface LiveIntent {
@@ -253,6 +297,30 @@ export async function handleAgentMessage(msg: string): Promise<AgentReply> {
     };
   }
 
+  // External watch — arbitrary URL the user provides ("watch amazon.com/...")
+  const extParsed = parseExternalIntentDeterministic(trimmed);
+  if (extParsed) {
+    const watch = await createWatchFromIntent({
+      label: extParsed.label,
+      url: extParsed.url,
+      intent: `Extract: product name, ${extParsed.field === "stock" ? "stock status" : "price as a number"}`,
+      field: extParsed.field,
+      operator: extParsed.operator,
+      target: extParsed.target,
+      query: extParsed.label,
+      source: "external",
+    });
+    void runScrapePass(watch.id);
+    const domain = (() => { try { return new URL(extParsed.url).hostname.replace(/^www\./, ""); } catch { return extParsed.url; } })();
+    return {
+      action: "create",
+      message: `Watching ${domain}. I created a fresh collector (${watch.collector_id}) and I'm scraping it now. I'll ping you ${extParsed.field === "stock" ? "when stock changes" : extParsed.target ? `when the price ${extParsed.operator === "<" ? "drops below" : extParsed.operator === ">" ? "rises above" : "changes from"} $${extParsed.target}` : "when the price changes"}.`,
+      watch,
+      watches: await getWatches(),
+      events: [],
+    };
+  }
+
   // Primary path: watch creation. Deterministic first (instant, reliable for
   // the demo), NIM as the structured-JSON authority for novel phrasing.
   let parsed = parseIntentDeterministic(trimmed);
@@ -261,7 +329,7 @@ export async function handleAgentMessage(msg: string): Promise<AgentReply> {
   if (!parsed) {
     return {
       action: "unknown",
-      message: "I watch pages and alert you on change. Try: \"Watch the iPhone 17 Pro and alert me when it drops below $949\".",
+      message: "I watch pages and alert you on change. Try: \"Watch the iPhone 17 Pro and alert me when it drops below $949\" or paste any URL like \"Watch https://amazon.com/dp/B0D1XD1ZV3.\"",
       watches,
     };
   }

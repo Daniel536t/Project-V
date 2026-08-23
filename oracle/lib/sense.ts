@@ -26,6 +26,7 @@ import {
   LIVE_SCRAPE_INTERVAL_MS,
   scrapeLiveWatch,
 } from "./live";
+import { runCollectorCli } from "./brightdata";
 
 export function generateWatchId(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -115,9 +116,77 @@ export async function createWatchFromIntent(input: {
   operator: string;
   target: string | null;
   query?: string | null;
-  source?: "store" | "live";
+  source?: "store" | "live" | "external";
 }): Promise<WatchRow> {
-  const source: "store" | "live" = input.source ?? "store";
+  const source: "store" | "live" | "external" = input.source ?? "store";
+
+  // EXTERNAL watch: any URL the user types. Create a fresh Bright Data
+  // collector on the fly via CLI, save the ID — one collector per URL, never
+  // recreated. Same scrape→break→heal→alert loop as everything else.
+  if (source === "external") {
+    const url = input.url;
+    if (!url || !url.startsWith("http")) {
+      throw new Error("External watch requires a valid URL");
+    }
+    const domain = new URL(url).hostname.replace(/^www\./, "");
+    const label = input.label || `${domain} · ${input.field === "stock" ? "stock" : "price"}`;
+
+    emitLog("info", `Creating collector for ${domain}…`);
+    const { spawn } = await import("node:child_process");
+    const collectorId = await new Promise<string>((resolve, reject) => {
+      const child = spawn("npx", [
+        "-y", "-p", "@brightdata/cli", "bdata",
+        "scraper", "create", url,
+        `Extract: product name, ${input.field === "stock" ? "stock status" : "price as a number"}`,
+        "--json",
+      ], {
+        env: { ...process.env, BRIGHTDATA_API_KEY: process.env.BRIGHT_DATA_API_KEY ?? "" },
+      });
+      let stdout = "";
+      child.stdout.on("data", (d: Buffer) => (stdout += d.toString()));
+      child.on("close", (code) => {
+        if (code !== 0) {
+          emitLog("error", `Collector creation failed with code ${code}`);
+          reject(new Error(`bdata scraper create exited ${code}`));
+          return;
+        }
+        // Parse the JSON output for collector_id or id
+        try {
+          const obj = JSON.parse(stdout.replace(/^[^{]*/, "").replace(/[^}]*$/, "}"));
+          const id = obj.collector_id || obj.id;
+          if (id) { resolve(String(id)); return; }
+          // Try finding c_ pattern in stdout
+          const m = stdout.match(/(c_[a-z0-9]{12,20})/);
+          if (m) { resolve(m[1]); return; }
+        } catch {}
+        const m = stdout.match(/(c_[a-z0-9]{12,20})/);
+        if (m) resolve(m[1]);
+        else reject(new Error(`Could not parse collector ID from create output`));
+      });
+    });
+
+    emitLog("success", `Collector ${collectorId} created · ${domain}`);
+
+    const watch = await createWatch({
+      id: generateWatchId(),
+      label,
+      url,
+      intent: input.intent ?? `Extract: product name, ${input.field}`,
+      field: input.field,
+      operator: input.operator,
+      target: input.target,
+      selector: null,
+      query: input.query ?? domain,
+      status: "watching",
+      collector_id: collectorId,
+      product_name: input.label ?? domain,
+      source: "external",
+      next_check_at: new Date(),
+    });
+
+    emitLog("info", `External watch ${watch.id} · collector ${collectorId} · ${url}`);
+    return watch;
+  }
 
   // LIVE watch: a real Bright Data collector against a real public URL. The
   // store watch is independent — each source keeps at most one active watch
@@ -282,6 +351,95 @@ async function runLiveScrapePass(
   return { watch: (await getWatch(watch.id))!, events, alerted, conditionMet: met, healed: false, value };
 }
 
+/** Run one scrape on an EXTERNAL watch (arbitrary URL, fresh collector). */
+async function runExternalScrapePass(
+  watch: WatchRow,
+  opts: ScrapeOptions = {},
+): Promise<RunResult> {
+  const events: string[] = [];
+  const collectorId = watch.collector_id ?? "c_unknown";
+  const url = watch.url;
+
+  emitLog("info", `Scraping ${watch.product_name ?? url} (external)…`);
+  await updateWatch(watch.id, { status: "checking" });
+
+  const started = Date.now();
+  const raw = await runCollectorCli(collectorId, url, 240_000);
+  const elapsedS = Math.round((Date.now() - started) / 1000);
+
+  if (raw == null) {
+    emitLog("warn", `External scrape returned no data (collector ${collectorId}) — retrying next tick`);
+    await updateWatch(watch.id, {
+      status: "watching",
+      last_checked_at: new Date(),
+      next_check_at: new Date(Date.now() + LIVE_SCRAPE_INTERVAL_MS),
+    });
+    return { watch: (await getWatch(watch.id))!, events, alerted: false, conditionMet: false, healed: false, value: null };
+  }
+
+  // Normalize the Bright Data envelope — same logic as scrapeStore
+  const data = (Array.isArray(raw) ? raw[0] : raw) as Record<string, unknown>;
+  let price: number | null = null;
+  let inStock: boolean | null = null;
+  let productName: string | null = null;
+
+  if (typeof data.price === "object" && data.price != null) {
+    const po = data.price as Record<string, unknown>;
+    price = typeof po.value === "number" ? po.value : parsePrice(String(po.value ?? "0"));
+  } else if (typeof data.price === "number") {
+    price = data.price;
+  } else if (data.price != null) {
+    price = parsePrice(String(data.price));
+  }
+
+  if (typeof data.in_stock === "boolean") inStock = data.in_stock;
+  else if (data.in_stock != null) inStock = String(data.in_stock).toLowerCase() === "true";
+
+  productName = String(data.product_name ?? data.name ?? data.title ?? watch.product_name ?? url);
+
+  // Determine value based on field
+  const value = watch.field === "stock"
+    ? (inStock === true ? "In Stock" : inStock === false ? "Out of Stock" : null)
+    : price != null ? `$${price.toFixed(2)}` : null;
+
+  // EDGE-TRIGGERED
+  const met = evaluateCondition(value, watch.field, watch.operator, watch.target, watch.previous_value);
+  const alerted = met && !(watch.last_condition_met ?? false) && !opts.suppressAlert;
+
+  await logScrape(watch.id, price, inStock, { value, raw: data });
+
+  const status = alerted ? "alerted" : "watching";
+  await updateWatch(watch.id, {
+    status,
+    last_value: value,
+    previous_value: watch.last_value,
+    last_condition_met: met,
+    last_checked_at: new Date(),
+    next_check_at: new Date(Date.now() + LIVE_SCRAPE_INTERVAL_MS),
+  });
+
+  emitLog(
+    "success",
+    `200 OK · ${productName.slice(0, 50)} · ${value ?? "?"} · ${elapsedS}s (collector ${collectorId})`,
+  );
+
+  if (alerted) {
+    emitLog("alert", `CONDITION MET · ${value} ${watch.operator} ${watch.target ?? ""} → alert dispatched`);
+    emitAlert({
+      watch_id: watch.id,
+      product_name: productName,
+      value: value ?? "",
+      field: watch.field,
+      operator: watch.operator,
+      target: watch.target,
+      previous: watch.previous_value ?? undefined,
+    });
+    events.push("alert");
+  }
+
+  return { watch: (await getWatch(watch.id))!, events, alerted, conditionMet: met, healed: false, value };
+}
+
 /** Run one scrape on a watch, auto-healing if it breaks. */
 export interface ScrapeOptions {
   /**
@@ -323,9 +481,12 @@ async function runScrapePassInner(
   let watch = await getWatch(watchId);
   if (!watch) throw new Error(`Watch ${watchId} not found`);
 
-  // LIVE watch: real collector against a real URL — no store heal, no selector.
+  // LIVE / EXTERNAL watch: real collector against a real URL — no store heal, no selector.
   if (watch.source === "live") {
     return runLiveScrapePass(watch, opts);
+  }
+  if (watch.source === "external") {
+    return runExternalScrapePass(watch, opts);
   }
 
   const events: string[] = [];

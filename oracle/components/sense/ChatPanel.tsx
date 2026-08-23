@@ -56,7 +56,7 @@ interface CreatedWatch {
 
 /** Shape of GET/POST /api/watches/parse-intent responses. */
 interface ParsedIntent {
-  kind: 'store' | 'live';
+  kind: 'store' | 'live' | 'external';
   product_name?: string;
   target_price?: number | null;
   condition?: string;
@@ -65,6 +65,9 @@ interface ParsedIntent {
   topic?: string;
   rank?: number;
   url?: string;
+  label?: string;
+  operator?: string;
+  target?: string | null;
   error?: string;
 }
 
@@ -279,6 +282,31 @@ export default function ChatPanel() {
 
       if (!parsedRes.ok || !parsed || parsed.error) {
         setMessages((prev) => [...prev, { id: uid(), role: 'agent', kind: 'normal', text: 'I couldn\u2019t parse that into a watch. Try: \u201cWatch the iPhone 17 Pro and alert me when it drops below $949\u201d.', ts: Date.now() }]);
+        return;
+      }
+
+      if (parsed.kind === 'external') {
+        const createRes = await fetchJson<CreatedWatch>('/api/watches', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            label: parsed.label ?? 'external watch',
+            url: parsed.url,
+            intent: `Extract: product name, ${parsed.field === 'stock' ? 'stock status' : 'price as a number'}`,
+            field: parsed.field ?? 'price',
+            operator: parsed.operator ?? 'changed',
+            target: parsed.target ?? null,
+            query: parsed.label,
+            source: 'external',
+          }),
+        });
+        const created = createRes.data;
+        if (!createRes.ok || !created || created.error) {
+          setMessages((prev) => [...prev, { id: uid(), role: 'agent', kind: 'normal', text: created?.error ?? 'Something went wrong creating that watch.', ts: Date.now() }]);
+          return;
+        }
+        const w = created.watch;
+        const domain = (() => { try { return new URL(parsed.url!).hostname.replace(/^www\./, ''); } catch { return parsed.url!; } })();
+        setMessages((prev) => [...prev, { id: uid(), role: 'agent', kind: 'normal', text: `Done — I created a fresh collector (${w?.collector_id ?? '?'}) for ${domain} and I'm scraping it now. I'll ping you ${parsed.field === 'stock' ? 'when stock changes' : parsed.target ? `when the price ${parsed.operator === '<' ? 'drops below' : parsed.operator === '>' ? 'rises above' : 'changes from'} $${parsed.target}` : 'when the price changes'}.`, ts: Date.now() }]);
         return;
       }
 
