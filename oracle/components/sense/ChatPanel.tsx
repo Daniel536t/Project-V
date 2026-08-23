@@ -178,12 +178,17 @@ export default function ChatPanel() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const { latestAlert, watchStatus, collectorId, scars } = useSharedStore();
-  const { draft, setDraft, focusTick, focusInput } = useSenseUi();
+  const { draft, setDraft, focusTick, focusInput, resetAt } = useSenseUi();
 
   // Focus the composer when the sidebar "New Watch" or a product card asks.
   useEffect(() => {
     if (focusTick > 0) inputRef.current?.focus();
   }, [focusTick]);
+
+  // Clear chat when demo is reset (the Reset Demo State button in the admin popup).
+  useEffect(() => {
+    if (resetAt > 0) setMessages([]);
+  }, [resetAt]);
 
   // Alerts arrive via the shared stream — push the tingle message when a new
   // one lands (deduped by watch+value so a re-render never double-fires).

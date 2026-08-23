@@ -470,12 +470,22 @@ export async function logEraHeal(e: {
   era_to_result?: unknown;
   description?: string;
 }): Promise<EraHealRow[]> {
+  // Upsert: one era heal per collector per era pair. A re-run updates the row.
   return query<EraHealRow>(
     `INSERT INTO era_heal_ledger
        (collector_id, era_from, era_to, era_from_url, era_to_url, retailer,
         product_name, old_selector, new_selector, confidence, recovery_seconds,
         attempted_heals, recovery_path, era_from_result, era_to_result, description)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+     ON CONFLICT (collector_id, era_from, era_to) DO UPDATE SET
+       confidence = EXCLUDED.confidence,
+       recovery_seconds = EXCLUDED.recovery_seconds,
+       attempted_heals = EXCLUDED.attempted_heals,
+       recovery_path = EXCLUDED.recovery_path,
+       description = EXCLUDED.description,
+       old_selector = EXCLUDED.old_selector,
+       new_selector = EXCLUDED.new_selector,
+       healed_at = NOW()
      RETURNING *`,
     [
       e.collector_id, e.era_from, e.era_to, e.era_from_url, e.era_to_url,

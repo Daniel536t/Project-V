@@ -11,6 +11,9 @@ interface SenseUiState {
   setTimeMachineOpen: (b: boolean) => void;
   focusTick: number;
   focusInput: () => void;
+  /** Incremented on demo reset — ChatPanel watches this to clear messages. */
+  resetAt: number;
+  triggerReset: () => void;
 }
 
 const SenseUiContext = createContext<SenseUiState | null>(null);
@@ -22,11 +25,13 @@ export function SenseUiProvider({ children }: { children: ReactNode }) {
   const [scarOpen, setScarOpen] = useState(false);
   const [timeMachineOpen, setTimeMachineOpen] = useState(false);
   const [focusTick, setFocusTick] = useState(0);
+  const [resetAt, setResetAt] = useState(0);
 
   const focusInput = () => setFocusTick((t) => t + 1);
+  const triggerReset = () => setResetAt(Date.now());
 
   return (
-    <SenseUiContext.Provider value={{ draft, setDraft, scarOpen, setScarOpen, timeMachineOpen, setTimeMachineOpen, focusTick, focusInput }}>
+    <SenseUiContext.Provider value={{ draft, setDraft, scarOpen, setScarOpen, timeMachineOpen, setTimeMachineOpen, focusTick, focusInput, resetAt, triggerReset }}>
       {children}
     </SenseUiContext.Provider>
   );

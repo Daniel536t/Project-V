@@ -192,15 +192,14 @@ export default function TimeMachinePanel() {
             </div>
           </div>
 
-          {/* Era Heal scar */}
+          {/* Era Heal scar — latest only */}
           {heals.length > 0 && (
             <div className="mt-4">
               <p className="px-1 pb-2 text-[12px] text-[var(--gray-2)]">Era heal record</p>
-              {heals.map((h) => (
-                <div
-                  key={h.id}
-                  className="mb-2.5 rounded-xl border border-[var(--ios-blue)]/40 bg-[var(--card)] p-3.5"
-                >
+              {(() => { const h = heals[0]; return (
+              <div
+                className="mb-2.5 rounded-xl border border-[var(--ios-blue)]/40 bg-[var(--card)] p-3.5"
+              >
                   <div className="flex items-center justify-between">
                     <span className="text-[13px] font-semibold">
                       ⏱ ERA HEAL · {h.era_from} → {h.era_to}
@@ -235,17 +234,11 @@ export default function TimeMachinePanel() {
 
                   <p className="mt-2 text-[11px] text-[var(--gray-1)] leading-snug">
                     {h.recovery_path === 'bright-data'
-                      ? `Bright Data heal restored extraction across ${config.eraTo - config.eraFrom} years of organic redesign. Same collector, healed in ${h.recovery_seconds ?? '?'}s.`
+                      ? `Bright Data heal restored extraction across ${config.eraTo - config.eraFrom} years of organic redesign.`
                       : `Bright Data planner could not map organic ${config.eraFrom}→${config.eraTo} redesign. Recovered via deterministic intent-based healing.`}
                   </p>
-
-                  {h.description && (
-                    <p className="mt-1 mono text-[10.5px] text-[var(--gray-2)] leading-snug">
-                      {h.description}
-                    </p>
-                  )}
                 </div>
-              ))}
+              )})()}
             </div>
           )}
 

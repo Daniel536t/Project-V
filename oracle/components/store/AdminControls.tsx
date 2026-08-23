@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { RotateCcw, Wrench, X } from 'lucide-react';
 import { useSharedStore } from '@/lib/StoreStreamContext';
+import { useSenseUi } from '@/lib/SenseUiContext';
 import { FEATURED_PRODUCTS } from '@/lib/store-shared';
 import type { StoreProduct } from '@/lib/useStoreStream';
 
@@ -11,6 +12,7 @@ const TEMPLATE_LABELS: Record<string, string> = { A: 'Classic', B: 'Modern', C: 
 
 export default function AdminControls() {
   const { products, template, botDetection } = useSharedStore();
+  const { triggerReset } = useSenseUi();
   const [open, setOpen] = useState(false);
 
   const active: StoreProduct | undefined =
@@ -168,7 +170,7 @@ export default function AdminControls() {
             <button
               onClick={() => {
                 if (!confirm('Reset all watches, scars, and price to demo defaults?')) return;
-                post({ action: 'reset_demo' }).then(() => setOpen(false));
+                post({ action: 'reset_demo' }).then(() => { setOpen(false); triggerReset(); });
               }}
               className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 bg-gray-100 py-2 text-[13px] text-gray-700 transition hover:bg-gray-200"
             >
