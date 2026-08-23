@@ -395,18 +395,7 @@ export default function ChatPanel() {
     : null;
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col bg-[var(--sense-bg)] relative">
-        {/* Subtle grain texture — the surface feels alive */}
-        <div className="sense-texture" aria-hidden="true" />
-        {/* Warm radial vignette — depth without distraction */}
-        <div className="sense-vignette absolute inset-0 pointer-events-none z-[1]" aria-hidden="true" />
-        {/* Floating micro-particles — barely visible, breathing */}
-        <div className="sense-particle sense-particle-1" style={{ top: '15%', left: '20%' }} />
-        <div className="sense-particle sense-particle-2" style={{ top: '55%', left: '75%' }} />
-        <div className="sense-particle sense-particle-3" style={{ top: '30%', left: '60%' }} />
-        <div className="sense-particle sense-particle-1" style={{ top: '70%', left: '35%', animationDelay: '3s' }} />
-        <div className="sense-particle sense-particle-2" style={{ top: '85%', left: '15%', animationDelay: '5s' }} />
-        <div className="sense-particle sense-particle-3" style={{ top: '10%', left: '80%', animationDelay: '7s' }} />
+    <div className="flex min-w-0 flex-1 flex-col bg-[var(--sense-bg)]">
       {/* ── Empty state ── */}
       {empty ? (
         <div className="flex flex-1 flex-col items-center justify-center px-6">

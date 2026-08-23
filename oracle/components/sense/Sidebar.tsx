@@ -32,8 +32,7 @@ const TOOLS = [
 export default function Sidebar() {
   const { focusInput, setScarOpen, setTimeMachineOpen } = useSenseUi();
   return (
-    <aside className="w-[218px] shrink-0 bg-[var(--sense-sidebar)] border-r border-[var(--sense-line)] flex flex-col relative">
-        <div className="sense-texture" aria-hidden="true" />
+    <aside className="w-[218px] shrink-0 bg-[var(--sense-sidebar)] border-r border-[var(--sense-line)] flex flex-col">
       {/* macOS traffic lights — exact colors and spacing */}
       <div className="flex items-center gap-2 px-4 pt-4 pb-1">
         <span className="w-3 h-3 rounded-full bg-[#ff5f57]" />
