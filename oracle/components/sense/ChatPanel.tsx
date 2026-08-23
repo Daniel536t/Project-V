@@ -185,6 +185,35 @@ export default function ChatPanel() {
     if (focusTick > 0) inputRef.current?.focus();
   }, [focusTick]);
 
+  // Ping sound on new agent messages — subtle, like a text notification.
+  const msgLenRef = useRef(0);
+  useEffect(() => {
+    const newMsgs = messages.slice(msgLenRef.current);
+    msgLenRef.current = messages.length;
+    const hasAgent = newMsgs.some((m) => m.role === 'agent');
+    if (!hasAgent) return;
+    try {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      // Two-note chime: C5 → E5, quick, quiet, warm
+      const now = ctx.currentTime;
+      osc.frequency.setValueAtTime(523, now);        // C5
+      osc.frequency.setValueAtTime(659, now + 0.08);  // E5
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.08, now + 0.02);
+      gain.gain.linearRampToValueAtTime(0.04, now + 0.15);
+      gain.gain.linearRampToValueAtTime(0, now + 0.28);
+      osc.start(now);
+      osc.stop(now + 0.3);
+    } catch {
+      /* AudioContext may fail without user gesture — fine, silent fallback */
+    }
+  }, [messages]);
+
   // Clear chat when demo is reset (the Reset Demo State button in the admin popup).
   useEffect(() => {
     if (resetAt > 0) setMessages([]);
