@@ -15,7 +15,7 @@
 
 ### Beat 2: Create a Watch (0:10–0:20)
 **[Action]** Type in chat: "Alert me when the iPhone 17 Pro drops below $950"
-**[Terminal]** `Watch W-XXXX created · collector c_mt2vcoe41t5o2alqfh · targeting iPhone 17 Pro`
+**[Terminal]** `Watch W-XXXX created · collector c_mt5qg63q1qa9ashdl5 · targeting iPhone 17 Pro`
 **[Terminal]** `200 OK · price=999 · stock=true · via brightdata-collector`
 **[Voice]** "SENSE creates a real Bright Data collector. Same collector ID across everything."
 
@@ -27,7 +27,7 @@
 **[Voice]** "The store redesigned. The scraper broke. SENSE detected it instantly."
 
 ### Beat 4: Heal (0:35–0:55)
-**[Terminal]** `Bright Data heal dispatched · attempt 1/2 · collector c_mt2vcoe41t5o2alqfh`
+**[Terminal]** `Bright Data heal dispatched · attempt 1/2 · collector c_mt5qg63q1qa9ashdl5`
 **[Terminal]** `⏳ Template refreshing… (attempt 1/4)`
 **[Terminal]** `✅ Heal landed · same collector returned $999`
 **[Terminal]** `Scar #1 · healed in 45s · 1 heal attempt(s) · zero downtime downstream`
