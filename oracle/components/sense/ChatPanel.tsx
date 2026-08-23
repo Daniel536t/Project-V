@@ -245,14 +245,21 @@ export default function ChatPanel() {
   // Reset
   useEffect(() => { if (resetAt > 0) setMessages([]); }, [resetAt]);
 
-  // Alerts
+  // Alerts + watch-ready events
   const lastAlertKey = useRef<string | null>(null);
   useEffect(() => {
     if (!latestAlert) return;
-    const key = `${latestAlert.watch_id}:${latestAlert.value}:${latestAlert.field}`;
+    const key = `${latestAlert.watch_id}:${latestAlert.value}:${latestAlert.field}:${latestAlert.kind ?? 'alert'}`;
     if (lastAlertKey.current === key) return;
     lastAlertKey.current = key;
     const alert = latestAlert;
+    // "watch_ready" — the collector finished building, first data arrived
+    if (alert.kind === 'watch_ready') {
+      const domain = (() => { try { return new URL(alert.product_name).hostname; } catch { return alert.product_name; } })();
+      const product = alert.product_name.length < 60 ? alert.product_name : alert.product_name.slice(0, 55) + '…';
+      setMessages((prev) => [...prev, { id: uid(), role: 'agent', kind: 'normal', text: `Collector ${alert.collector_id ?? ''} is live for ${domain}. Current data: **${product}** — ${alert.value}. I'll ping you ${alert.operator === 'changed' ? 'when the price changes' : alert.operator === '<' ? `when it drops below $${alert.target}` : alert.operator === '>' ? `when it rises above $${alert.target}` : 'on any change'}.`, ts: Date.now() }]);
+      return;
+    }
     setMessages((prev) => [...prev, { id: uid(), role: 'agent', kind: 'alert', text: '', alert, ts: Date.now() }]);
     fetch('/api/alerts/voice', {
       method: 'POST',
@@ -306,9 +313,9 @@ export default function ChatPanel() {
           setMessages((prev) => [...prev, { id: uid(), role: 'agent', kind: 'normal', text: created?.error ?? 'Something went wrong creating that watch.', ts: Date.now() }]);
           return;
         }
-        const w = created.watch;
         const domain = (() => { try { return new URL(parsed.url!).hostname.replace(/^www\./, ''); } catch { return parsed.url!; } })();
-        setMessages((prev) => [...prev, { id: uid(), role: 'agent', kind: 'normal', text: `Done — I created a fresh collector (${w?.collector_id ?? '?'}) for ${domain} and I'm scraping it now. I'll ping you ${parsed.field === 'stock' ? 'when stock changes' : parsed.target ? `when the price ${parsed.operator === '<' ? 'drops below' : parsed.operator === '>' ? 'rises above' : 'changes from'} $${parsed.target}` : 'when the price changes'}.`, ts: Date.now() }]);
+        const conditionPhrase = parsed.field === 'stock' ? 'when stock changes' : parsed.target ? `when the price ${parsed.operator === '<' ? 'drops below' : parsed.operator === '>' ? 'rises above' : 'changes from'} $${parsed.target}` : 'when the price changes';
+        setMessages((prev) => [...prev, { id: uid(), role: 'agent', kind: 'normal', text: `I'm building a scraper for ${domain} — this takes 60–90 seconds (Bright Data's AI is analyzing the page). The terminal shows live progress. I'll report back ${conditionPhrase}.`, ts: Date.now() }]);
         return;
       }
 

@@ -32,6 +32,10 @@ export interface AlertEvent {
   previous?: string | null;
   /** Optional human detail (e.g. matched story title for a semantic alert). */
   detail?: string | null;
+  /** For non-alert events — "watch_ready" when a pending external watch first gets data. */
+  kind?: string;
+  /** For watch_ready: the collector ID that was assigned. */
+  collector_id?: string | null;
 }
 
 type Listener<T> = (event: T) => void;

@@ -479,6 +479,19 @@ async function runExternalScrapePass(
     `200 OK · ${productName.slice(0, 50)} · ${value ?? "?"} · ${elapsedS}s (collector ${collectorId})`,
   );
 
+  // Tell the chat the collector is ready — the agent shows "I'm building a scraper…"
+  // and this follow-up confirms the result.
+  emitAlert({
+    kind: "watch_ready",
+    watch_id: watch.id,
+    product_name: productName,
+    value: value ?? "",
+    field: watch.field,
+    operator: watch.operator,
+    target: watch.target,
+    collector_id: collectorId,
+  });
+
   if (alerted) {
     emitLog("alert", `CONDITION MET · ${value} ${watch.operator} ${watch.target ?? ""} → alert dispatched`);
     emitAlert({
