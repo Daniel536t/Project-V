@@ -20,6 +20,8 @@ export interface AlertEvent {
   field: string;
   operator: string;
   target: string | null;
+  /** Only set on spike/drop alerts — the value from the previous scrape. */
+  previous?: string | null;
   /** Optional human detail (e.g. matched story title for a semantic alert). */
   detail?: string | null;
 }

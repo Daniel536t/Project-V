@@ -192,16 +192,41 @@ export default function ChatPanel() {
 
   // Alerts arrive via the shared stream — push the tingle message when a new
   // one lands (deduped by watch+value so a re-render never double-fires).
+  // Also fetch the companion voice judgment.
   const lastAlertKey = useRef<string | null>(null);
   useEffect(() => {
     if (!latestAlert) return;
     const key = `${latestAlert.watch_id}:${latestAlert.value}:${latestAlert.field}`;
     if (lastAlertKey.current === key) return;
     lastAlertKey.current = key;
+    const alert = latestAlert;
     setMessages((prev) => [
       ...prev,
-      { id: uid(), role: 'agent', kind: 'alert', text: '', alert: latestAlert },
+      { id: uid(), role: 'agent', kind: 'alert', text: '', alert },
     ]);
+    // Fetch companion voice asynchronously — render it when it arrives.
+    fetch('/api/alerts/voice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        product_name: alert.product_name,
+        value: alert.value,
+        operator: alert.operator,
+        target: alert.target,
+        previous: alert.previous,
+        field: alert.field,
+      }),
+    }).then(r => r.json()).then(d => {
+      if (d.voice) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.alert && m.alert.watch_id === alert.watch_id && !m.text
+              ? { ...m, text: d.voice }
+              : m
+          )
+        );
+      }
+    }).catch(() => {});
   }, [latestAlert]);
 
   async function handleSend() {
@@ -459,12 +484,18 @@ export default function ChatPanel() {
                     <div className="min-w-0 flex-1">
                       <div className="animate-shiver rounded-[20px] bg-[var(--sense-bubble)] px-4 py-3 ring-2 ring-[var(--alert)]">
                         <p className="mono text-[13px] font-semibold text-[var(--alert)]">
-                          {m.alert.field === 'stock' ? '\uD83D\uDD14 STOCK ALERT' : m.alert.field === 'rank' ? '\uD83D\uDD14 SENSE ALERT' : '\uD83D\uDD14 PRICE ALERT'}
+                          {m.alert.field === 'stock' ? '\uD83D\uDD14 STOCK ALERT' : m.alert.field === 'rank' ? '\uD83D\uDD14 SENSE ALERT' : m.alert.field === 'stock' ? '\uD83D\uDD14 STOCK ALERT' : m.alert.operator === 'spike' ? '\u26A0\uFE0F SPIKE ALERT' : m.alert.operator === 'drop' ? '\uD83D\uDCC9 DROP ALERT' : '\uD83D\uDD14 PRICE ALERT'}
                         </p>
                         <p className="mt-1.5 text-[15px] leading-relaxed text-[var(--ink)]">
                           {alertLine(m.alert)}
                         </p>
-                        <div className="mt-2 flex items-center gap-4">
+                        {/* Companion voice — fetched async, appears when ready */}
+                        {m.text && (
+                          <p className="mt-2 text-[13.5px] leading-relaxed text-[var(--gray-1)] italic">
+                            {m.text}
+                          </p>
+                        )}
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
                           <button
                             onClick={() => viewProduct(m.alert!)}
                             className="text-[13px] font-medium text-[var(--store-blue)] hover:underline"
@@ -478,6 +509,53 @@ export default function ChatPanel() {
                             Stop Watching
                           </button>
                         </div>
+                        {/* Action chips — redirect attention to different products/strategies */}
+                        {m.alert.field === 'price' && (() => {
+                          const t = num(m.alert.target);
+                          const raiseTarget = t != null ? t + 150 : null;
+                          const other = airpods;
+                          return (
+                            <div className="mt-2.5 flex flex-wrap gap-1.5 border-t border-[var(--sense-line)] pt-2.5">
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    await fetch(`/api/watches/${m.alert!.watch_id}`, { method: 'DELETE' });
+                                  } catch {}
+                                  setDraft(`Keep watching ${m.alert!.product_name}`);
+                                  focusInput();
+                                }}
+                                className="rounded-full bg-[var(--sense-card)] px-3 py-1 text-[11.5px] font-medium border border-[var(--sense-line)] hover:bg-[var(--sense-hover)] transition-colors"
+                              >
+                                Keep watching
+                              </button>
+                              {raiseTarget != null && (
+                                <button
+                                  onClick={async () => {
+                                    try {
+                                      await fetch(`/api/watches/${m.alert!.watch_id}`, { method: 'DELETE' });
+                                    } catch {}
+                                    setDraft(`Alert me when the ${m.alert!.product_name} drops below $${raiseTarget}`);
+                                    focusInput();
+                                  }}
+                                  className="rounded-full bg-[var(--sense-card)] px-3 py-1 text-[11.5px] font-medium border border-[var(--sense-line)] hover:bg-[var(--sense-hover)] transition-colors"
+                                >
+                                  Raise target to ${raiseTarget}
+                                </button>
+                              )}
+                              {other && (
+                                <button
+                                  onClick={() => {
+                                    setDraft(`Alert me when the ${other.name} drops below $${suggestedWatchTarget(other.price)}`);
+                                    focusInput();
+                                  }}
+                                  className="rounded-full bg-[var(--sense-card)] px-3 py-1 text-[11.5px] font-medium border border-[var(--sense-line)] hover:bg-[var(--sense-hover)] transition-colors"
+                                >
+                                  Watch {other.name} instead — {other.priceLabel}
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
                   ) : (

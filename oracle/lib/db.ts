@@ -173,6 +173,7 @@ export interface WatchRow {
   target: string | null;
   status: string;
   last_value: string | null;
+  previous_value: string | null;
   selector: string | null;
   scar_count: number;
   query: string | null;
@@ -246,6 +247,7 @@ const WATCH_EDITABLE = new Set([
   "target",
   "status",
   "last_value",
+  "previous_value",
   "selector",
   "scar_count",
   "query",
@@ -270,6 +272,7 @@ export async function updateWatch(
       | "target"
       | "status"
       | "last_value"
+      | "previous_value"
       | "selector"
       | "scar_count"
       | "query"

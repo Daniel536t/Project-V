@@ -61,6 +61,7 @@ export function evaluateCondition(
   field: string,
   operator: string,
   target: string | null,
+  previous?: string | null,
 ): boolean {
   if (field === "stock") {
     const inStock = /in stock/i.test(value ?? "");
@@ -70,6 +71,16 @@ export function evaluateCondition(
   const n = parsePrice(value);
   if (n == null) return false;
   if (operator === "changed") return true;
+  // Magnitude-based: spike (≥10% increase between scrapes), drop (≥10% decrease)
+  if (operator === "spike" || operator === "drop") {
+    const prev = parsePrice(previous ?? null);
+    if (prev != null && prev > 0) {
+      const pct = (n - prev) / prev;
+      if (operator === "spike") return pct >= 0.10;
+      if (operator === "drop") return pct <= -0.10;
+    }
+    return false;
+  }
   const parsed = target == null ? null : parsePrice(target);
   if (parsed == null) return false;
   const t: number = parsed;
@@ -396,7 +407,7 @@ async function runScrapePassInner(
   // persists the previous evaluation, so a condition that stays met never
   // repeats; when it clears, the next true re-arms the alert. The creation-time
   // first scrape suppresses emission — the chat says it conversationally.
-  conditionMet = evaluateCondition(outcome.value, watch.field, watch.operator, watch.target);
+  conditionMet = evaluateCondition(outcome.value, watch.field, watch.operator, watch.target, watch.previous_value);
   alerted = conditionMet && !(watch.last_condition_met ?? false) && !opts.suppressAlert;
   value = outcome.value;
 
@@ -404,6 +415,7 @@ async function runScrapePassInner(
   await updateWatch(watchId, {
     status,
     last_value: outcome.value,
+    previous_value: watch.last_value,
     last_condition_met: conditionMet,
     last_checked_at: new Date(),
     next_check_at: new Date(Date.now() + SCRAPE_INTERVAL_MS),
@@ -423,6 +435,7 @@ async function runScrapePassInner(
       field: watch.field,
       operator: watch.operator,
       target: watch.target,
+      previous: watch.previous_value ?? undefined,
     });
     events.push("alert");
   }
