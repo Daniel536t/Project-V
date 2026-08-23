@@ -123,6 +123,10 @@ export async function createWatchFromIntent(input: {
   // EXTERNAL watch: any URL the user types. Create a fresh Bright Data
   // collector on the fly via CLI, save the ID — one collector per URL, never
   // recreated. Same scrape→break→heal→alert loop as everything else.
+  //
+  // Collector creation takes 60-120s (npx download + AI generation) so we
+  // create the watch row FIRST with status "pending", return immediately,
+  // and spawn the CLI in the background. The terminal streams progress.
   if (source === "external") {
     const url = input.url;
     if (!url || !url.startsWith("http")) {
@@ -131,54 +135,7 @@ export async function createWatchFromIntent(input: {
     const domain = new URL(url).hostname.replace(/^www\./, "");
     const label = input.label || `${domain} · ${input.field === "stock" ? "stock" : "price"}`;
 
-    emitLog("info", `Creating collector for ${domain}…`);
-    const { spawn } = await import("node:child_process");
-    const collectorId = await new Promise<string>((resolve, reject) => {
-      const child = spawn("npx", [
-        "-y", "-p", "@brightdata/cli", "bdata",
-        "scraper", "create", url,
-        `Extract: product name, ${input.field === "stock" ? "stock status" : "price as a number"}`,
-        "--json",
-      ], {
-        env: { ...process.env, BRIGHTDATA_API_KEY: process.env.BRIGHT_DATA_API_KEY ?? "" },
-      });
-      let stdout = "";
-      let stderr = "";
-      child.stdout.on("data", (d: Buffer) => (stdout += d.toString()));
-      child.stderr.on("data", (d: Buffer) => (stderr += d.toString()));
-      // bdata scraper create takes 60-120s: npx download (15-30s) + AI generation (30-90s).
-      // The CLI polls up to 600 steps internally, so give it generous headroom.
-      const timer = setTimeout(() => {
-        child.kill("SIGKILL");
-        emitLog("error", `Collector creation timed out after 300s`);
-        reject(new Error(`bdata scraper create timed out`));
-      }, 300_000);
-      child.on("close", (code) => {
-        clearTimeout(timer);
-        if (code !== 0) {
-          // Surface stderr so we can diagnose real failures (API key, network, etc.)
-          const errSnippet = (stderr || stdout).slice(-200).replace(/\n/g, " ");
-          emitLog("error", `Collector creation failed (exit ${code}): ${errSnippet}`);
-          reject(new Error(`bdata scraper create exited ${code}: ${errSnippet}`));
-          return;
-        }
-        // The v0.3+ envelope is { collector_id, name, status, ... }. The legacy
-        // --legacy-output path emits bare AI-progress JSON. Try structured first.
-        try {
-          const cleaned = stdout.replace(/^[^{]*/, "").replace(/[^}]*$/, "}");
-          const obj = JSON.parse(cleaned);
-          const id = obj.collector_id || obj.id;
-          if (id) { resolve(String(id)); return; }
-        } catch {}
-        // Fallback: grep for c_ pattern anywhere in output
-        const m = stdout.match(/(c_[a-z0-9]{12,20})/);
-        if (m) { resolve(m[1]); return; }
-        reject(new Error(`Could not parse collector ID from create output`));
-      });
-    });
-
-    emitLog("success", `Collector ${collectorId} created · ${domain}`);
-
+    // Create placeholder watch immediately so the chat doesn't hang.
     const watch = await createWatch({
       id: generateWatchId(),
       label,
@@ -189,14 +146,19 @@ export async function createWatchFromIntent(input: {
       target: input.target,
       selector: null,
       query: input.query ?? domain,
-      status: "watching",
-      collector_id: collectorId,
+      status: "pending",
+      collector_id: null,
       product_name: input.label ?? domain,
       source: "external",
       next_check_at: new Date(),
     });
 
-    emitLog("info", `External watch ${watch.id} · collector ${collectorId} · ${url}`);
+    // Detach collector creation — do NOT await. Fires in the background,
+    // streams progress to the terminal, and updates the watch row when done.
+    spawnExternalCollector(watch.id, url, domain, input.field).catch((err) => {
+      emitLog("error", `External collector background task crashed: ${err}`);
+    });
+
     return watch;
   }
 
@@ -271,6 +233,87 @@ export async function createWatchFromIntent(input: {
     `Watch ${watch.id} created · collector ${watch.collector_id} · targeting ${product.name}`,
   );
   return watch;
+}
+
+/**
+ * Background task: create a Bright Data collector via CLI for an external URL.
+ * Runs detached from the HTTP request so the chat doesn't hang for 60-120s.
+ * Streams progress to the terminal and updates the watch row on completion.
+ */
+async function spawnExternalCollector(
+  watchId: string,
+  url: string,
+  domain: string,
+  field: string,
+): Promise<void> {
+  emitLog("info", `Creating collector for ${domain}…`);
+  const { spawn } = await import("node:child_process");
+
+  try {
+    const collectorId = await new Promise<string>((resolve, reject) => {
+      const child = spawn("npx", [
+        "-y", "-p", "@brightdata/cli", "bdata",
+        "scraper", "create", url,
+        `Extract: product name, ${field === "stock" ? "stock status" : "price as a number"}`,
+        "--json",
+      ], {
+        env: { ...process.env, BRIGHTDATA_API_KEY: process.env.BRIGHT_DATA_API_KEY ?? "" },
+      });
+      let stdout = "";
+      let stderr = "";
+      let lastLine = "";
+      child.stdout.on("data", (d: Buffer) => {
+        const chunk = d.toString();
+        stdout += chunk;
+        // Stream polling progress to the terminal (one line per second max)
+        const lines = chunk.split("\n").filter(Boolean);
+        const latest = lines[lines.length - 1];
+        if (latest && latest !== lastLine && /polling|attempt|Step/i.test(latest)) {
+          lastLine = latest;
+          emitLog("info", `  ${domain} · ${latest.trim()}`);
+        }
+      });
+      child.stderr.on("data", (d: Buffer) => (stderr += d.toString()));
+      const timer = setTimeout(() => {
+        child.kill("SIGKILL");
+        emitLog("error", `Collector creation timed out after 300s for ${domain}`);
+        reject(new Error(`bdata scraper create timed out`));
+      }, 300_000);
+      child.on("close", (code) => {
+        clearTimeout(timer);
+        if (code !== 0) {
+          const errSnippet = (stderr || stdout).slice(-200).replace(/\n/g, " ");
+          emitLog("error", `${domain}: collector creation failed (exit ${code}): ${errSnippet}`);
+          reject(new Error(`bdata scraper create exited ${code}: ${errSnippet}`));
+          return;
+        }
+        try {
+          const cleaned = stdout.replace(/^[^{]*/, "").replace(/[^}]*$/, "}");
+          const obj = JSON.parse(cleaned);
+          const id = obj.collector_id || obj.id;
+          if (id) { resolve(String(id)); return; }
+        } catch {}
+        const m = stdout.match(/(c_[a-z0-9]{12,20})/);
+        if (m) { resolve(m[1]); return; }
+        reject(new Error(`Could not parse collector ID from create output`));
+      });
+    });
+
+    emitLog("success", `Collector ${collectorId} created · ${domain}`);
+    await updateWatch(watchId, {
+      collector_id: collectorId,
+      status: "watching",
+    });
+    emitLog("info", `External watch ${watchId} now active · ${collectorId} · ${url}`);
+
+    // Fire the first scrape async.
+    void runScrapePass(watchId);
+  } catch (err) {
+    emitLog("error", `${domain}: collector creation failed — ${err instanceof Error ? err.message : String(err)}`);
+    await updateWatch(watchId, {
+      status: "broken",
+    }).catch(() => {});
+  }
 }
 
 /** Run one scrape on a LIVE watch (real Bright Data collector, real URL). */
@@ -625,7 +668,7 @@ export async function scrapeDueWatches(): Promise<RunResult[]> {
   const results: RunResult[] = [];
   for (const w of watches) {
     const due = w.next_check_at == null || new Date(w.next_check_at).getTime() <= now;
-    const idle = w.status !== "alerted" && w.status !== "checking" && w.status !== "broken";
+    const idle = w.status !== "alerted" && w.status !== "checking" && w.status !== "broken" && w.status !== "pending";
     if (due && idle) {
       try {
         results.push(await runScrapePass(w.id));

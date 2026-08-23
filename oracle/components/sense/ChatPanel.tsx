@@ -170,6 +170,8 @@ function statusChip(status: string | null, collectorId: string | null, scars: nu
       return { dot: 'var(--alert)', label: '● Alert sent', cls: 'text-[var(--alert)]' };
     case 'checking':
       return { dot: 'var(--gray-2)', label: '● Checking', cls: 'text-[var(--gray-1)]' };
+    case 'pending':
+      return { dot: 'var(--amber)', label: '● Creating collector…', cls: 'animate-pulse text-[var(--amber)]' };
     default:
       return { dot: 'var(--success)', label: `● Watching · ${collectorId ?? COLLECTOR_ID}`, cls: 'text-[var(--gray-1)]' };
   }
