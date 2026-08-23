@@ -314,7 +314,7 @@ export default function ChatPanel() {
           return;
         }
         const domain = (() => { try { return new URL(parsed.url!).hostname.replace(/^www\./, ''); } catch { return parsed.url!; } })();
-        const conditionPhrase = parsed.field === 'stock' ? 'when stock changes' : parsed.target ? `when the price ${parsed.operator === '<' ? 'drops below' : parsed.operator === '>' ? 'rises above' : 'changes from'} $${parsed.target}` : 'when the price changes';
+        const conditionPhrase = parsed.field === 'stock' ? 'when stock changes' : parsed.field === 'rank' ? 'when the ranking changes' : parsed.target ? `when the price ${parsed.operator === '<' ? 'drops below' : parsed.operator === '>' ? 'rises above' : 'changes from'} $${parsed.target}` : 'when the data changes';
         setMessages((prev) => [...prev, { id: uid(), role: 'agent', kind: 'normal', text: `I'm building a scraper for ${domain} — this takes 60–90 seconds (Bright Data's AI is analyzing the page). The terminal shows live progress. I'll report back ${conditionPhrase}.`, ts: Date.now() }]);
         return;
       }

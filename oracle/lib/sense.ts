@@ -136,6 +136,20 @@ export async function createWatchFromIntent(input: {
     const domain = new URL(url).hostname.replace(/^www\./, "");
     const label = input.label || `${domain} · ${input.field === "stock" ? "stock" : "price"}`;
 
+    // DEDUP: if a watch already exists for this exact URL, reuse it instead of
+    // spawning a second collector for the same page. Multiple watchers on one
+    // URL was causing back-to-back `bdata scraper create` runs that timed out.
+    const existing = (await getWatches()).find(
+      (w) => w.source === "external" && w.url === url,
+    );
+    if (existing) {
+      emitLog(
+        "info",
+        `Already watching ${domain} (${existing.id}) — reusing collector ${existing.collector_id ?? "(creating)"}`,
+      );
+      return existing;
+    }
+
     // Create placeholder watch immediately so the chat doesn't hang.
     const watch = await createWatch({
       id: generateWatchId(),
@@ -413,8 +427,18 @@ async function runExternalScrapePass(
   opts: ScrapeOptions = {},
 ): Promise<RunResult> {
   const events: string[] = [];
-  const collectorId = watch.collector_id ?? "c_unknown";
   const url = watch.url;
+
+  // Collector not ready yet (still being created in the background). Don't
+  // spam the terminal with a scrape against a null collector ID — just skip
+  // this tick and let the scheduler retry after creation completes.
+  if (!watch.collector_id) {
+    await updateWatch(watch.id, {
+      next_check_at: new Date(Date.now() + LIVE_SCRAPE_INTERVAL_MS),
+    }).catch(() => {});
+    return { watch, events, alerted: false, conditionMet: false, healed: false, value: null };
+  }
+  const collectorId = watch.collector_id;
 
   emitLog("info", `Scraping ${watch.product_name ?? url} (external)…`);
   await updateWatch(watch.id, { status: "checking" });
