@@ -35,7 +35,7 @@ interface EraHealRow {
 const config = WAYBACK_CONFIG;
 
 export default function TimeMachinePanel() {
-  const { timeMachineOpen, setTimeMachineOpen } = useSenseUi();
+  const { timeMachineOpen, setTimeMachineOpen, resetAt } = useSenseUi();
   const [era2019, setEra2019] = useState<EraResult | null>(null);
   const [era2026, setEra2026] = useState<EraResult | null>(null);
   const [heals, setHeals] = useState<EraHealRow[]>([]);
@@ -49,7 +49,8 @@ export default function TimeMachinePanel() {
       .then((r) => r.json())
       .then((d) => setHeals(d.heals ?? []))
       .catch(() => {});
-  }, [timeMachineOpen]);
+    // Demo reset wipes the era heal ledger — refetch so the panel empties too.
+  }, [timeMachineOpen, resetAt]);
 
   const runEraScrape = useCallback(
     async (era: 2019 | 2026) => {

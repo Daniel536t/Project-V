@@ -29,6 +29,12 @@ export function useLogs(): { logs: LogEntry[]; clear: () => void } {
       }
     };
 
+    // Server-side wipe (demo reset) — drop the local view so the terminal
+    // restarts clean; the next live event appends again.
+    es.addEventListener('clear', () => {
+      if (alive) setLogs([]);
+    });
+
     return () => {
       alive = false;
       es.close();

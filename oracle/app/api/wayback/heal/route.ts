@@ -1,11 +1,65 @@
 import { NextResponse } from 'next/server';
-import { healCollectorCli, runCollectorCli } from '@/lib/brightdata';
+import {
+  healCollectorCli,
+  runCollectorCli,
+  type HealCliResult,
+} from '@/lib/brightdata';
 import { WAYBACK_CONFIG } from '@/lib/wayback';
 import { emitLog } from '@/lib/stream';
 import { logEraHeal } from '@/lib/db';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+// ---- Refresh-job gate ----
+// Bright Data executes heals as async refresh jobs with a concurrency cap of
+// ONE per collector. A heal dispatched while another job is running is rejected
+// in ~3s with "Another refresh job is already running". That rejection is NOT a
+// failed heal — it's a gate wait. Poll until the gate clears, then dispatch.
+
+const GATE_POLL_MS = 20_000;
+const GATE_MAX_WAIT_MS = 120_000;
+
+function isJobBusy(stdout: string): boolean {
+  return /Another (?:refresh|refactor) job is (?:already|still) in progress/i.test(stdout);
+}
+
+function cliDone(result: HealCliResult): boolean {
+  if (result.code !== 0 || result.timedOut) return false;
+  const text = result.stdout ?? '';
+  return /"status"\s*:\s*"done"/.test(text) && /save_new_template/.test(text);
+}
+
+/**
+ * Dispatch the heal, waiting for the refresh-job gate to clear if needed.
+ * Returns the CLI result of the dispatch the planner actually accepted, or
+ * null if the gate never cleared within GATE_MAX_WAIT_MS.
+ */
+async function dispatchGatedHeal(
+  collectorId: string,
+  description: string,
+): Promise<HealCliResult | null> {
+  const deadline = Date.now() + GATE_MAX_WAIT_MS;
+  let waitedForGate = false;
+
+  while (true) {
+    const result = await healCollectorCli(collectorId, description, 420_000);
+
+    if (isJobBusy(result.stdout ?? '')) {
+      waitedForGate = true;
+      emitLog('info', '⏳ Bright Data refresh job still running — waiting for clear');
+      if (Date.now() + GATE_POLL_MS > deadline) {
+        emitLog('warn', '⚠️ Refresh job never cleared within 120s — era heal aborted');
+        return null;
+      }
+      await new Promise((r) => setTimeout(r, GATE_POLL_MS));
+      continue;
+    }
+
+    if (waitedForGate) emitLog('info', '✅ Refresh job cleared — dispatching era heal now');
+    return result;
+  }
+}
 
 /** Wait for the Bright Data refresh job, then run a verification scrape. */
 async function verifyExtraction(
@@ -48,12 +102,27 @@ export async function POST() {
     `from the current live ${config.retailer} page.`;
 
   const startedAt = Date.now();
-  const result = await healCollectorCli(collectorId, description, 420_000);
+
+  // Gated dispatch — never fire into a busy refresh job.
+  const result = await dispatchGatedHeal(collectorId, description);
+
+  if (result == null) {
+    const durationMs = Date.now() - startedAt;
+    emitLog('warn', `ERA HEAL aborted · refresh job never cleared · ${Math.round(durationMs / 1000)}s`);
+    await logEraHeal({
+      collector_id: collectorId, era_from: config.eraFrom, era_to: config.eraTo,
+      era_from_url: config.eraFromUrl, era_to_url: config.eraToUrl,
+      retailer: config.retailer, product_name: config.productName,
+      confidence: 0, recovery_seconds: Math.round(durationMs / 1000),
+      attempted_heals: 0, recovery_path: 'local-fallback',
+      description: `ERA HEAL ${config.eraFrom}→${config.eraTo} · aborted · refresh job never cleared within 120s`,
+    });
+    return NextResponse.json({ success: false, collectorId, durationMs, recoveryPath: 'local-fallback', aborted: true });
+  }
 
   const stdout = result.stdout ?? '';
-  const cliDone = /"status"\s*:\s*"done"/.test(stdout) && /save_new_template/.test(stdout);
 
-  if (!cliDone) {
+  if (!cliDone(result)) {
     const durationMs = Date.now() - startedAt;
     emitLog('warn', `ERA HEAL did not land · ${Math.round(durationMs / 1000)}s`);
     await logEraHeal({

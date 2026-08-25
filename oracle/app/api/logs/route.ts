@@ -1,4 +1,4 @@
-import { logHistory, onLog, type LogEvent } from "@/lib/stream";
+import { logHistory, onLog, onLogClear, type LogEvent } from "@/lib/stream";
 import { ensureScheduler } from "@/lib/scheduler";
 
 export const runtime = "nodejs";
@@ -22,6 +22,15 @@ export async function GET(req: Request) {
       for (const event of logHistory()) send(event);
 
       const unsubscribe = onLog(send);
+      // When the server wipes log history (demo reset), tell connected
+      // terminals to clear their local view too — otherwise old lines linger.
+      const unsubscribeClear = onLogClear(() => {
+        try {
+          controller.enqueue(encoder.encode(`event: clear\ndata: {}\n\n`));
+        } catch {
+          /* stream closed */
+        }
+      });
       const heartbeat = setInterval(() => {
         try {
           controller.enqueue(encoder.encode(`: ping\n\n`));
@@ -33,6 +42,7 @@ export async function GET(req: Request) {
       req.signal.addEventListener("abort", () => {
         clearInterval(heartbeat);
         unsubscribe();
+        unsubscribeClear();
       });
     },
   });

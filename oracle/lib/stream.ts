@@ -55,12 +55,34 @@ export interface HealEvent {
 type Listener<T> = (event: T) => void;
 
 const logListeners = new Set<Listener<LogEvent>>();
+const logClearListeners = new Set<() => void>();
 const storeListeners = new Set<Listener<ProductState>>();
 const alertListeners = new Set<Listener<AlertEvent>>();
 const healListeners = new Set<Listener<HealEvent>>();
 
 const LOG_HISTORY: LogEvent[] = [];
 const LOG_HISTORY_MAX = 300;
+
+/**
+ * Wipe the terminal history server-side and notify every connected terminal
+ * (SSE) to clear its local view. Used by the demo reset so the terminal starts
+ * fresh instead of replaying the previous session's logs.
+ */
+export function clearLogHistory(): void {
+  LOG_HISTORY.length = 0;
+  for (const l of Array.from(logClearListeners)) {
+    try {
+      l();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+export function onLogClear(listener: () => void): () => void {
+  logClearListeners.add(listener);
+  return () => logClearListeners.delete(listener);
+}
 
 export function emitLog(level: LogLevel, text: string): void {
   const event: LogEvent = { ts: Date.now(), level, text };

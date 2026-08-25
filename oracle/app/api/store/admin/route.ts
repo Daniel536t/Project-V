@@ -8,7 +8,7 @@ import {
 } from "@/lib/store";
 import { scrapeAllWatches } from "@/lib/sense";
 import { deleteAllWatches, getPool } from "@/lib/db";
-import { emitLog, emitStore } from "@/lib/stream";
+import { clearLogHistory, emitLog, emitStore } from "@/lib/stream";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,12 +61,17 @@ export async function POST(req: Request) {
     } else if (action === "set_bot_detection") {
       updated = await updateProduct({ bot_detection: Boolean(body.value) });
     } else if (action === "reset_demo") {
-      // Full demo reset: product to $999/A/in-stock, clear all watches/scars/history
-      await updateProduct({ price: 999, in_stock: true, template: "A", bot_detection: false });
+      // Full demo reset: back to the demo default (iPhone 17 Pro · $999 ·
+      // Template A · in stock), clear watches, scars, era heal ledger, scrape
+      // history, and the terminal log history.
+      updated = await selectProduct("iphone-17-pro");
       await deleteAllWatches();
       await getPool().query("DELETE FROM heal_ledger");
+      await getPool().query("DELETE FROM era_heal_ledger");
       await getPool().query("DELETE FROM scrape_history");
-      updated = await getProduct();
+      // Wipe the terminal server-side + push a clear to every open terminal,
+      // THEN emit the single fresh line so the reset reads as a clean slate.
+      clearLogHistory();
       emitLog("info", "Demo state reset → $999 · Template A · clean");
       emitStore(toState(updated));
       return NextResponse.json({ status: "reset", ...toState(updated) });
