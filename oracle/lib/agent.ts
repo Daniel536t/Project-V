@@ -7,7 +7,7 @@ import { MODELS } from "./constants";
 import { STORE_DOMAINS } from "./config";
 import { createWatchFromIntent, runScrapePass, type RunResult } from "./sense";
 import { deleteWatch, getWatches, type WatchRow } from "./db";
-import { FEATURED_PRODUCTS, detectProductName } from "./store-shared";
+import { FEATURED_PRODUCTS, detectProductName, detectProductId } from "./store-shared";
 import { HN_NAME, HN_URL } from "./live";
 
 const STORE_URL = "/api/store/html";
@@ -50,7 +50,7 @@ export function parseExternalIntentDeterministic(msg: string): ExternalIntent | 
   if (!hasWatch) return null;
 
   // Stock intent?
-  if (/(stock|restock|back in|available|inventory|out of stock|sold out)/i.test(m)) {
+  if (/(stock|restock|back in|available|inventory|out of stock|sold out|pre-?orders?|pre-?sales?)/i.test(m)) {
     const operator = /(out of|sold out|gone|unavailable)/i.test(m) ? "out_of_stock" : "in_stock";
     return { kind: "external", url, label: `${domain} · stock`, field: "stock", operator, target: null };
   }
@@ -67,6 +67,88 @@ export function parseExternalIntentDeterministic(msg: string): ExternalIntent | 
   }
 
   return { kind: "external", url, label: `${domain} · ${operator === "changed" ? "any change" : operator + " $" + target}`, field: "price", operator, target };
+}
+
+// ---- Subjects that are clearly NOT one of the five demo-store products ----
+// The default product is a demo feature: "alert me when it drops below $900"
+// with no subject named still means the iPhone 17 Pro. But when the message
+// explicitly names something else (Bitcoin, GTA 6, Steam, …), the store
+// parser must NOT claim it — that silently creates a watch on the wrong
+// thing. The guard below only fires when no store product was detected.
+
+const NON_STORE_SUBJECTS =
+  /(bitcoin|\bbtc\b|ethereum|\beth\b|solana|\bsol\b|dogecoin|\bdoge\b|\bxrp\b|ripple|cardano|\bada\b|\bcrypto\b|\bgta\b|\bps5\b|\bps6\b|\bswitch\s*2\b|nintendo|\bsteam\b|stockx|\bxbox\b)/i;
+
+function mentionsNonStoreSubject(m: string): boolean {
+  return NON_STORE_SUBJECTS.test(m);
+}
+
+// ---- Crypto price watch — no URL needed ("alert me when Bitcoin goes above $120000") ----
+// Maps a coin to its real CoinMarketCap page and runs the SAME external
+// collector pipeline: real Bright Data scrape, real envelope, real alert.
+
+const CRYPTO_SLUGS: Array<{ re: RegExp; slug: string; name: string }> = [
+  { re: /\bbitcoin\b|\bbtc\b/i, slug: "bitcoin", name: "Bitcoin" },
+  { re: /\bethereum\b|\beth\b/i, slug: "ethereum", name: "Ethereum" },
+  { re: /\bsolana\b|\bsol\b/i, slug: "solana", name: "Solana" },
+  { re: /\bdogecoin\b|\bdoge\b/i, slug: "dogecoin", name: "Dogecoin" },
+  { re: /\bxrp\b|\bripple\b/i, slug: "xrp", name: "XRP" },
+  { re: /\bcardano\b|\bada\b/i, slug: "cardano", name: "Cardano" },
+];
+
+export function parseCryptoIntentDeterministic(msg: string): ExternalIntent | null {
+  const m = msg.trim();
+  if (/(https?:\/\/)/i.test(m)) return null; // an explicit URL → external parser owns it
+  if (!/(watch|track|monitor|alert|notify|ping|tell me)/i.test(m)) return null;
+  if (!/(price|above|below|over|under|drop|drops|rises?|falls?|hits?)/i.test(m)) return null;
+  const coin = CRYPTO_SLUGS.find((c) => c.re.test(m));
+  if (!coin) return null;
+  const targetM = m.match(/(?:under|below|less than|over|above|more than)\s*\$?\s*(\d[\d,]*(?:\.\d+)?)/i);
+  let operator = "changed";
+  let target: string | null = null;
+  if (targetM) {
+    target = targetM[1].replace(/,/g, "");
+    operator = /(over|above|more than)/i.test(targetM[0]) ? ">" : "<";
+  }
+  return {
+    kind: "external",
+    url: `https://coinmarketcap.com/currencies/${coin.slug}/`,
+    label: `${coin.name} · ${operator === "changed" ? "any change" : `${operator === "<" ? "<" : ">"} $${target}`}`,
+    field: "price",
+    operator,
+    target,
+  };
+}
+
+// ---- Release / preorder watch without a URL ("tell me when GTA 6 preorders open") ----
+// Honest behavior: SENSE can watch a page the moment the user points it at
+// one. Without a URL it asks for the page instead of pretending.
+
+export interface ReleaseIntent {
+  kind: "release";
+  subject: string;
+  url: string | null;
+}
+
+export function parseReleaseIntent(msg: string): ReleaseIntent | null {
+  const m = msg.trim();
+  if (!/(pre-?orders?|pre-?sales?|presales?|up for sale|goes on sale|becomes? available|open for (pre-?)?orders?|launch(es)?)/i.test(m)) return null;
+  if (/\$\s*\d/.test(m)) return null; // explicit price → price-watch paths
+  if (/(hacker\s*news|\bhn\b)/i.test(m)) return null; // live parser owns HN
+  if (detectProductId(m)) return null; // store stock watch ("iPhone back in stock")
+  if (/(https?:\/\/)/i.test(m)) return null; // external parser owns URL messages
+  const urlM = m.match(/(https?:\/\/[^\s]+)/i);
+  const subject = m
+    .replace(/(https?:\/\/\S+)/gi, " ")
+    .replace(/\b(keep an eye on|keep track of|hold a spot for|hold a spot|let me know when|the moment|as soon as|for me|watch|monitor|track|tell me|alert me|notify me|ping me|when|if)\b/gi, " ")
+    .replace(/\b(pre-?orders?|pre-?sales?|presales?|goes up|go up|up for sale|goes on sale|opens?|open|becomes? available|available|launch(es)?|releases?|released|me|us)\b/gi, " ")
+    .replace(/[^a-zA-Z0-9 .+-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^(the|a|an)\s+/i, "")
+    .replace(/\s+(and|or|for|to|on)$/i, "");
+  if (!subject || subject.length < 2) return null;
+  return { kind: "release", subject, url: urlM ? urlM[1].replace(/[.,;:!?)]+$/, "") : null };
 }
 
 // ---- LIVE semantic watch ("watch HN and alert me when X hits the top N") ----
@@ -106,6 +188,10 @@ export function parseLiveIntentDeterministic(msg: string): LiveIntent | null {
 }
 
 export async function parseLiveIntentNim(msg: string): Promise<LiveIntent | null> {
+  // Guard: NIM's HN extractor must never hallucinate a live watch from a
+  // message that names some other subject ("tell me when GTA 6 presales
+  // open" → topic:"GTA 6", rank:5 would create a nonsense HN watch).
+  if (!/(hacker\s*news|news\.ycombinator|\bhn\b)/i.test(msg) && mentionsNonStoreSubject(msg)) return null;
   try {
     const raw = await callLLM(MODELS.conversational, msg, {
       system:
@@ -147,6 +233,9 @@ export function parseIntentDeterministic(msg: string): ParsedIntent | null {
 
   if (field === "stock") {
     const condition = /(out of|sold out|gone|unavailable)/i.test(m) ? "out_of_stock" : "in_stock";
+    // Default product stays — unless the message names something that is
+    // clearly NOT one of our products ("alert me when Bitcoin is available").
+    if (!detectProductId(m) && mentionsNonStoreSubject(m)) return null;
     return { product_name: detectProductName(m), target_price: null, condition, field };
   }
 
@@ -167,6 +256,7 @@ export function parseIntentDeterministic(msg: string): ParsedIntent | null {
   }
 
   if (target == null) return null;
+  if (!detectProductId(m) && mentionsNonStoreSubject(m)) return null;
   return { product_name: detectProductName(m), target_price: target, condition, field };
 }
 
@@ -203,12 +293,16 @@ export async function parseIntentNim(msg: string): Promise<ParsedIntent | null> 
     };
     const condition = String(obj.condition ?? "<");
     const field = obj.field === "stock" ? "stock" : "price";
-    return {
-      product_name: obj.product_name ?? DEFAULT_PRODUCT,
-      target_price: obj.target_price ?? null,
-      condition,
-      field,
-    };
+    // Trust the LLM only when it named one of OUR products. Vague phrasing
+    // keeps the demo default — but a message naming something else (Bitcoin,
+    // GTA 6, …) must never be hijacked into an iPhone watch.
+    const llmName = (obj.product_name ?? "").toLowerCase();
+    const matched = FEATURED_PRODUCTS.find((p) => p.name.toLowerCase() === llmName);
+    if (matched) {
+      return { product_name: matched.name, target_price: obj.target_price ?? null, condition, field };
+    }
+    if (mentionsNonStoreSubject(msg)) return null;
+    return { product_name: DEFAULT_PRODUCT, target_price: obj.target_price ?? null, condition, field };
   } catch {
     return null;
   }
@@ -280,8 +374,11 @@ export async function handleAgentMessage(msg: string): Promise<AgentReply> {
   }
 
   // LIVE semantic watch (Hacker News → "top N") — a real Bright Data collector.
-  const live = parseLiveIntentDeterministic(trimmed) ?? (await parseLiveIntentNim(trimmed));
-  if (live) {
+  // Deterministic first; the NIM fallback waits until every cheap parser below
+  // has had its turn (otherwise "GTA 6 presale" pays a 25s LLM round-trip).
+  const liveDet = parseLiveIntentDeterministic(trimmed);
+  if (liveDet) {
+    const live = liveDet;
     const watch = await createWatchFromIntent({
       label: `${live.name} — ${live.topic} in top ${live.rank}`,
       url: live.url,
@@ -327,6 +424,65 @@ export async function handleAgentMessage(msg: string): Promise<AgentReply> {
     };
   }
 
+  // Crypto price watch — real CoinMarketCap page through the SAME external
+  // collector pipeline (real Bright Data scrape, real envelope, real alert).
+  const crypto = parseCryptoIntentDeterministic(trimmed);
+  if (crypto) {
+    const watch = await createWatchFromIntent({
+      label: crypto.label,
+      url: crypto.url,
+      intent: `Extract: coin name, current price as a number`,
+      field: crypto.field,
+      operator: crypto.operator,
+      target: crypto.target,
+      query: crypto.label,
+      source: "external",
+    });
+    void runScrapePass(watch.id);
+    return {
+      action: "create",
+      message: `Watching ${crypto.label} on coinmarketcap.com. Building the collector now (60–90s) — I'll ping you ${crypto.target ? `when the price ${crypto.operator === "<" ? "drops below" : "rises above"} $${crypto.target}` : "on any price change"}.`,
+      watch,
+      watches: await getWatches(),
+      events: [],
+    };
+  }
+
+  // Release / preorder intent without a URL — ask for the page. Honest, and
+  // it keeps the "watch anything" promise without faking data.
+  const release = parseReleaseIntent(trimmed);
+  if (release) {
+    return {
+      action: "need_url",
+      message: `I can watch ${release.subject} for you — I just need the page. Paste the product page where preorders will appear, like: "Watch https://store.steampowered.com/app/... and ping me when preorders open". The moment that page flips to available, you get pinged.`,
+      watches,
+    };
+  }
+
+  // Live NIM fallback — novel HN phrasing only (guarded against non-HN subjects).
+  const live = await parseLiveIntentNim(trimmed);
+  if (live) {
+    const watch = await createWatchFromIntent({
+      label: `${live.name} — ${live.topic} in top ${live.rank}`,
+      url: live.url,
+      intent: `Extract the top stories from the front page (title, url, points, comments) and find stories about ${live.topic}`,
+      field: "rank",
+      operator: "<=",
+      target: String(live.rank),
+      query: live.topic,
+      source: "live",
+    });
+    // First real scrape runs async (Bright Data batch job, ~2–3 min).
+    void runScrapePass(watch.id);
+    return {
+      action: "create",
+      message: `Watching ${live.name}. I'll ping you the moment a ${live.topic} story breaks into the top ${live.rank}. Collector ${watch.collector_id}.`,
+      watch,
+      watches: await getWatches(),
+      events: [],
+    };
+  }
+
   // Primary path: watch creation. Deterministic first (instant, reliable for
   // the demo), NIM as the structured-JSON authority for novel phrasing.
   let parsed = parseIntentDeterministic(trimmed);
@@ -362,7 +518,9 @@ export async function handleAgentMessage(msg: string): Promise<AgentReply> {
       ? operator === "out_of_stock"
         ? "the moment it goes out of stock"
         : "the moment it's back in stock"
-      : `the moment the price drops below $${target}`;
+      : operator === ">" || operator === ">="
+        ? `the moment the price goes above $${target}`
+        : `the moment the price drops below $${target}`;
 
   // run.value already carries its natural form ("$139" or "In Stock").
   const current = run.value;
@@ -371,6 +529,7 @@ export async function handleAgentMessage(msg: string): Promise<AgentReply> {
   if (current) message += ` Currently ${current}.`;
   message += ` I'll tell you ${when}.`;
   if (run.alerted) message += ` 🔔 Actually — condition already met: ${current}.`;
+  if (/\b(buy|purchase)\b/i.test(trimmed)) message += ` I can't place the order for you — but the second it hits your price, you'll get the ping with everything you need.`;
 
   return {
     action: "create",

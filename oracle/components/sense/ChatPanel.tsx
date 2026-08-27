@@ -56,7 +56,8 @@ interface CreatedWatch {
 
 /** Shape of GET/POST /api/watches/parse-intent responses. */
 interface ParsedIntent {
-  kind: 'store' | 'live' | 'external';
+  kind: 'store' | 'live' | 'external' | 'release';
+  subject?: string;
   product_name?: string;
   target_price?: number | null;
   condition?: string;
@@ -318,6 +319,11 @@ export default function ChatPanel() {
         return;
       }
 
+      if (parsed.kind === 'release') {
+        setMessages((prev) => [...prev, { id: uid(), role: 'agent', kind: 'normal', text: `I can watch ${parsed.subject} for you \u2014 I just need the page. Paste the product URL where preorders will appear, like: \u201cWatch https://store.steampowered.com/app/... and ping me when preorders open\u201d. The moment that page flips to available, you get pinged.`, ts: Date.now() }]);
+        return;
+      }
+
       if (parsed.kind === 'external') {
         const createRes = await fetchJson<CreatedWatch>('/api/watches', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -371,9 +377,11 @@ export default function ChatPanel() {
       const w = created.watch;
       const collector = w?.collector_id ?? COLLECTOR_ID;
       const current = w?.last_value ?? (w?.field === 'price' ? `$${w.target}` : '\u2026');
+      const pricePhrase = (parsed.condition === '>' || parsed.condition === '>=') ? `rises above $${w?.target}` : `drops below $${w?.target}`;
       let text = w?.field === 'stock'
         ? `Done \u2014 I'm watching ${w?.product_name}. It's ${current} right now. I'll ping you the moment it's back in stock. Collector ${collector} \u00b7 checking every ${SCRAPE_INTERVAL_S}s.`
-        : `Done \u2014 I'm watching ${w?.product_name}. It's ${current} right now. I'll ping you the moment the price drops below $${w?.target}. Collector ${collector} \u00b7 checking every ${SCRAPE_INTERVAL_S}s.`;
+        : `Done \u2014 I'm watching ${w?.product_name}. It's ${current} right now. I'll ping you the moment the price ${pricePhrase}. Collector ${collector} \u00b7 checking every ${SCRAPE_INTERVAL_S}s.`;
+      if (/\b(buy|purchase)\b/i.test(msg)) text += ` I can't place the order for you \u2014 but the second it hits your price, you'll get the ping with everything you need.`;
       if (created.alerted) {
         const already = w?.field === 'stock' ? "it's already in stock" : "it's already below your target";
         text += ` Heads up \u2014 ${already}, so I won't fire an alert for it now. If the condition clears and comes back, I'll ping you then.`;

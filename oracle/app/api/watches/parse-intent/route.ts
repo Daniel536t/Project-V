@@ -5,6 +5,8 @@ import {
   parseLiveIntentDeterministic,
   parseLiveIntentNim,
   parseExternalIntentDeterministic,
+  parseCryptoIntentDeterministic,
+  parseReleaseIntent,
   type ParsedIntent,
   type LiveIntent,
 } from "@/lib/agent";
@@ -31,6 +33,13 @@ export async function POST(req: Request) {
     });
   }
 
+  // Crypto price watch — no URL needed ("alert me when Bitcoin goes above $120000")
+  // → real CoinMarketCap page through the external collector pipeline.
+  const crypto = parseCryptoIntentDeterministic(message);
+  if (crypto) {
+    return NextResponse.json(crypto);
+  }
+
   // Order matters: the STORE deterministic parser runs FIRST — the demo's
   // primary flow ("alert me when the iPhone 17 Pro drops below $800") must
   // never pay an LLM round-trip. NIM is only consulted when both deterministic
@@ -46,10 +55,23 @@ export async function POST(req: Request) {
     });
   }
 
-  // Live semantic watch ("watch HN and alert me when an AI-agents story hits
-  // the top 5") — deterministic first, NIM only for novel phrasing.
-  const live: LiveIntent | null =
-    parseLiveIntentDeterministic(message) ?? (await parseLiveIntentNim(message));
+  // Live semantic watch — DETERMINISTIC first. The NIM fallback must wait
+  // until every cheap parser has had its turn, otherwise messages like
+  // "tell me when GTA 6 presales open" pay a 25s LLM round-trip (and NIM's
+  // HN extractor might hallucinate a live watch from them).
+  const liveDet = parseLiveIntentDeterministic(message);
+  if (liveDet) {
+    return NextResponse.json(liveDet);
+  }
+
+  // Release / preorder intent without a URL — the agent will ask for the page
+  // ("tell me when GTA 6 preorders open" → needs the product page URL).
+  const release = parseReleaseIntent(message);
+  if (release) {
+    return NextResponse.json(release);
+  }
+
+  const live: LiveIntent | null = await parseLiveIntentNim(message);
   if (live) {
     return NextResponse.json(live);
   }
