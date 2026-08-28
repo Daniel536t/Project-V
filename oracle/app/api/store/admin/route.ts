@@ -65,8 +65,7 @@ export async function POST(req: Request) {
       // Template A · in stock), clear watches, scars, era heal ledger, scrape
       // history, and the terminal log history.
       updated = await selectProduct("iphone-17-pro");
-      // the challenge-page toggle is demo state too — re-read so the
-      // response reflects the final state, not a pre-update snapshot
+      // the challenge-page toggle is demo state too
       updated = await updateProduct({ bot_detection: false });
       await deleteAllWatches();
       await getPool().query("DELETE FROM heal_ledger");
@@ -77,7 +76,12 @@ export async function POST(req: Request) {
       clearLogHistory();
       emitLog("info", "Demo state reset → $999 · Template A · clean");
       emitStore(toState(updated));
-      return NextResponse.json({ status: "reset", ...toState(updated) });
+      return NextResponse.json({
+        status: "reset",
+        ...toState(updated),
+        // camelCase alias so the reset response matches GET /api/store/state
+        botDetection: updated.bot_detection,
+      });
     } else {
       return NextResponse.json({ error: `unknown action: ${action}` }, { status: 400 });
     }
