@@ -544,7 +544,7 @@ export async function handleAgentMessage(msg: string): Promise<AgentReply> {
     const domain = (() => { try { return new URL(extParsed.url).hostname.replace(/^www\./, ""); } catch { return extParsed.url; } })();
     return {
       action: "create",
-      message: `Watching ${domain}. I created a fresh collector (${watch.collector_id}) and I'm scraping it now. I'll ping you ${extParsed.field === "stock" ? "when stock changes" : extParsed.target ? `when the price ${extParsed.operator === "<" ? "drops below" : extParsed.operator === ">" ? "rises above" : "changes from"} $${extParsed.target}` : "when the price changes"}.`,
+      message: `Sir — watching ${domain}. I'm building the collector now (60–90s; the terminal shows the build) and the first reading arrives when it lands. I'll ping you ${extParsed.field === "stock" ? "when stock changes" : extParsed.target ? `when the price ${extParsed.operator === "<" ? "drops below" : extParsed.operator === ">" ? "rises above" : "changes from"} $${extParsed.target}` : "when the price changes"}.`,
       watch,
       watches: await getWatches(),
       events: [],
