@@ -196,9 +196,10 @@ export function parseLiveIntentDeterministic(msg: string): LiveIntent | null {
 
 export async function parseLiveIntentNim(msg: string): Promise<LiveIntent | null> {
   // Guard: NIM's HN extractor must never hallucinate a live watch from a
-  // message that names some other subject ("tell me when GTA 6 presales
-  // open" → topic:"GTA 6", rank:5 would create a nonsense HN watch).
-  if (!/(hacker\s*news|news\.ycombinator|\bhn\b)/i.test(msg) && mentionsNonStoreSubject(msg)) return null;
+  // message that isn't HN-shaped ("MacBook Air under $1100" reaching this
+  // fallback before the store NIM parser would otherwise become a nonsense
+  // HN watch). HN-ish words or an HN-ish structure are required to fire.
+  if (!/(hacker\s*news|news\.ycombinator|\bhn\b|story|stories|front page)/i.test(msg)) return null;
   try {
     const raw = await callLLM(MODELS.conversational, msg, {
       system:

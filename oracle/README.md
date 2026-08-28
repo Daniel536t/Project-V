@@ -209,6 +209,32 @@ Type any product page URL into the chat:
 
 The agent creates a fresh Bright Data collector against that URL (~60–90 seconds), streams progress to the terminal, and starts monitoring. The same break→heal→alert→scar pipeline applies.
 
+### Optional: Ask, don't watch
+
+A question gets an answer, not a watch:
+
+> What is the price of the iPhone 17 Pro right now?
+
+SENSE answers instantly from live state. For any other page —
+
+> Check https://www.adorama.com/ica5dm4.html — what's the price today?
+
+— it reuses (or builds) the page's collector, and the answer arrives as the first sweep lands.
+
+### Optional: Watch without a URL
+
+Crypto prices are mapped to their live CoinMarketCap pages automatically:
+
+> Alert me when Bitcoin goes above $120,000
+
+Release / preorder watches work the same way once you point at a page:
+
+> Watch https://store.steampowered.com/app/... and ping me when preorders open
+
+Without a URL, SENSE asks for the page rather than pretending. Content watches work on any page:
+
+> Watch https://blog.rust-lang.org and tell me when a new post appears
+
 ### Optional: Multiple template flips
 
 In the popup, click through the templates: Modern → Schema → Classic. Each flip breaks the scraper and heals instantly — the terminal and chat agent narrate each one. This demonstrates that the heal works repeatedly, on any template, in any order, with zero accumulated downtime.

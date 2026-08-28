@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
+import { callLLM } from "@/lib/llm-router";
+import { MODELS } from "@/lib/constants";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY;
 
 interface VoiceInput {
   product_name: string;
@@ -98,43 +98,18 @@ function templateVoice(input: VoiceInput): string {
  * on any failure. Timeboxed: the alert card must never feel sluggish.
  */
 async function llmVoice(input: VoiceInput): Promise<string | null> {
-  if (!NVIDIA_API_KEY) return null;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 3_000);
   try {
-    const res = await fetch(
-      "https://integrate.api.nvidia.com/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${NVIDIA_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "meta/llama-3.3-70b-instruct",
-          messages: [
-            { role: "system", content: SENSE_REGISTER },
-            {
-              role: "user",
-              content: `Brief Sir on this surveillance result:\n\n${factSheet(input)}\n\nYour briefing:`,
-            },
-          ],
-          temperature: 0.7,
-          max_tokens: 120,
-        }),
-        signal: controller.signal,
-      },
+    // Router gives dual-key fallback + per-call timeout; voice uses a tight
+    // 8s ceiling — the alert card is already on screen while this lands.
+    const text = await callLLM(
+      MODELS.conversational,
+      `Brief Sir on this surveillance result:\n\n${factSheet(input)}\n\nYour briefing:`,
+      { system: SENSE_REGISTER, maxTokens: 140, temperature: 0.7, timeoutMs: 8_000 },
     );
-    clearTimeout(timer);
-    if (!res.ok) return null;
-    const data = (await res.json()) as {
-      choices?: { message?: { content?: string } }[];
-    };
-    const text = data.choices?.[0]?.message?.content?.trim();
+    const trimmed = text.trim();
     // Sanity: refuse empty or absurdly long answers.
-    return text && text.length <= 600 ? text : null;
+    return trimmed && trimmed.length <= 600 ? trimmed : null;
   } catch {
-    clearTimeout(timer);
     return null;
   }
 }

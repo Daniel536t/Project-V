@@ -99,10 +99,15 @@ export const CHANNELS: Channel[] = [
   },
 ];
 
+// Model roster verified live 2026-08-28 against the account entitlements.
+// llama-3.3-70b hit EOL 2026-08-26 and nemotron-3.5-lightning went DEGRADED —
+// everything now points at models this account can actually invoke.
 export const MODELS = {
-  primary: "thinkingmachines/inkling",
+  primary: "nvidia/nemotron-3-super-120b-a12b",
   vision: "meta/muse-glimmer-30b",
-  conversational: "nvidia/nemotron-3.5-lightning-30b-a3b",
+  // Fastest live model (0.9s vs 8.8s for the 120B) — it sits in the chat
+  // request path for intent extraction, so latency is the constraint.
+  conversational: "minimaxai/minimax-m3",
   ocr: "nvidia/nemotron-parse",
   backup: "minimaxai/minimax-m3",
 } as const;

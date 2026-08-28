@@ -14,6 +14,8 @@ export interface LLMOptions {
   maxTokens?: number;
   temperature?: number;
   system?: string;
+  /** Per-call abort ceiling in ms (default 25s). Voice/alert paths use ~8s. */
+  timeoutMs?: number;
 }
 
 type ChatPart =
@@ -59,7 +61,7 @@ async function callNim(
   // intent-extraction route (the chat path already avoids NIM for the
   // deterministic demo flow, but fallbacks need a bound too).
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 25_000);
+  const timeout = setTimeout(() => controller.abort(), opts.timeoutMs ?? 25_000);
 
   for (let i = 0; i < keys.length; i++) {
     const key = keys[i];
