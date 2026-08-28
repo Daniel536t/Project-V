@@ -25,6 +25,10 @@ export interface AlertEvent {
   previous?: string | null;
   /** Optional human detail (e.g. matched story title for a semantic alert). */
   detail?: string | null;
+  /** Everything the scrape fetched — powers the full SENSE briefing. */
+  stock?: boolean | null;
+  via?: string | null;
+  elapsed_s?: number | null;
   /** "alert" (default), "watch_ready" when a pending external watch gets data. */
   kind?: string;
   /** Set on watch_ready — the collector ID that was assigned. */

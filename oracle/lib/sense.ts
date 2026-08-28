@@ -70,9 +70,17 @@ export function evaluateCondition(
     if (operator === "out_of_stock") return !inStock;
     return inStock;
   }
+  // Content watches — "tell me when the page changes". The value is the
+  // page's headline snapshot; a change only counts when it differs from the
+  // previous reading (the first reading arms the watch, it doesn't alert).
+  if (field === "content") {
+    return operator === "changed" && previous != null && value !== previous;
+  }
   const n = parsePrice(value);
   if (n == null) return false;
-  if (operator === "changed") return true;
+  // "Any change" — real diff semantics, not always-true: fires when the
+  // value differs from the previous scrape, re-arms when it stabilizes.
+  if (operator === "changed") return previous != null && value !== previous;
   // Magnitude-based: spike (≥10% increase between scrapes), drop (≥10% decrease)
   if (operator === "spike" || operator === "drop") {
     const prev = parsePrice(previous ?? null);
@@ -414,6 +422,8 @@ async function runLiveScrapePass(
       operator: watch.operator,
       target: watch.target,
       detail,
+      via: "brightdata-collector",
+      elapsed_s: elapsedS,
     });
     events.push("alert");
   }
@@ -477,10 +487,12 @@ async function runExternalScrapePass(
 
   productName = String(data.product_name ?? data.name ?? data.title ?? watch.product_name ?? url);
 
-  // Determine value based on field
-  const value = watch.field === "stock"
-    ? (inStock === true ? "In Stock" : inStock === false ? "Out of Stock" : null)
-    : price != null ? `$${price.toFixed(2)}` : null;
+  // Determine value based on field — content watches read the page headline.
+  const value = watch.field === "content"
+    ? productName
+    : watch.field === "stock"
+      ? (inStock === true ? "In Stock" : inStock === false ? "Out of Stock" : null)
+      : price != null ? `$${price.toFixed(2)}` : null;
 
   // EDGE-TRIGGERED
   const met = evaluateCondition(value, watch.field, watch.operator, watch.target, watch.previous_value);
@@ -526,6 +538,9 @@ async function runExternalScrapePass(
       operator: watch.operator,
       target: watch.target,
       previous: watch.previous_value ?? undefined,
+      stock: inStock,
+      via: "brightdata-collector",
+      elapsed_s: elapsedS,
     });
     events.push("alert");
   }
@@ -736,6 +751,8 @@ async function runScrapePassInner(
       operator: watch.operator,
       target: watch.target,
       previous: watch.previous_value ?? undefined,
+      stock: inStock,
+      via: (outcome as ScrapeOutcome).source,
     });
     events.push("alert");
   }

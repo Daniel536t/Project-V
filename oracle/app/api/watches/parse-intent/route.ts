@@ -7,6 +7,7 @@ import {
   parseExternalIntentDeterministic,
   parseCryptoIntentDeterministic,
   parseReleaseIntent,
+  isAsk,
   type ParsedIntent,
   type LiveIntent,
 } from "@/lib/agent";
@@ -38,6 +39,12 @@ export async function POST(req: Request) {
   const crypto = parseCryptoIntentDeterministic(message);
   if (crypto) {
     return NextResponse.json(crypto);
+  }
+
+  // One-off question — SENSE answers it, no watch created. ChatPanel routes
+  // "ask" to the agent chat path, which replies from real state (no LLM stall).
+  if (isAsk(message)) {
+    return NextResponse.json({ kind: "ask" });
   }
 
   // Order matters: the STORE deterministic parser runs FIRST — the demo's

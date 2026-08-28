@@ -56,7 +56,7 @@ interface CreatedWatch {
 
 /** Shape of GET/POST /api/watches/parse-intent responses. */
 interface ParsedIntent {
-  kind: 'store' | 'live' | 'external' | 'release';
+  kind: 'store' | 'live' | 'external' | 'release' | 'ask';
   subject?: string;
   product_name?: string;
   target_price?: number | null;
@@ -258,14 +258,15 @@ export default function ChatPanel() {
     if (alert.kind === 'watch_ready') {
       const domain = (() => { try { return new URL(alert.product_name).hostname; } catch { return alert.product_name; } })();
       const product = alert.product_name.length < 60 ? alert.product_name : alert.product_name.slice(0, 55) + '…';
-      setMessages((prev) => [...prev, { id: uid(), role: 'agent', kind: 'normal', text: `Collector ${alert.collector_id ?? ''} is live for ${domain}. Current data: **${product}** — ${alert.value}. I'll ping you ${alert.operator === 'changed' ? 'when the price changes' : alert.operator === '<' ? `when it drops below $${alert.target}` : alert.operator === '>' ? `when it rises above $${alert.target}` : 'on any change'}.`, ts: Date.now() }]);
+      const whenPhrase = alert.field === 'content' ? 'when the page changes' : alert.operator === 'changed' ? 'when the price changes' : alert.operator === '<' ? `when it drops below $${alert.target}` : alert.operator === '>' ? `when it rises above $${alert.target}` : 'on any change';
+      setMessages((prev) => [...prev, { id: uid(), role: 'agent', kind: 'normal', text: `Sir \u2014 the collector is live for ${domain} (${alert.collector_id ?? 'pending'}). First sweep: **${product}** \u2014 ${alert.value}. I shall alert you ${whenPhrase}. All else remains quiet.`, ts: Date.now() }]);
       return;
     }
     setMessages((prev) => [...prev, { id: uid(), role: 'agent', kind: 'alert', text: '', alert, ts: Date.now() }]);
     fetch('/api/alerts/voice', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ product_name: alert.product_name, value: alert.value, operator: alert.operator, target: alert.target, previous: alert.previous, field: alert.field }),
+      body: JSON.stringify({ product_name: alert.product_name, value: alert.value, operator: alert.operator, target: alert.target, previous: alert.previous, field: alert.field, stock: alert.stock, via: alert.via, elapsed_s: alert.elapsed_s, collector_id: alert.collector_id, detail: alert.detail }),
     }).then(r => r.json()).then(d => {
       if (d.voice) setMessages((prev) => prev.map((m) => m.alert && m.alert.watch_id === alert.watch_id && !m.text ? { ...m, text: d.voice } : m));
     }).catch(() => {});
@@ -283,13 +284,13 @@ export default function ChatPanel() {
     if (h.stage === 'break') {
       setMessages((prev) => [...prev, {
         id: uid(), role: 'agent', kind: 'normal',
-        text: `⚠️ **${h.product_name}** — the page just changed. Template switched from **${h.old_template ?? 'Classic'} → ${h.template_label}**. Price extraction broke (the old selector no longer matches). Recovering now…`,
+        text: `⚠️ Sir — forgive the interruption. The page just changed under us — **${h.old_template ?? 'Classic'} → ${h.template_label}**. Extraction has broken; I'm already recovering.`,
         ts: Date.now(),
       }]);
     } else {
       setMessages((prev) => [...prev, {
         id: uid(), role: 'agent', kind: 'normal',
-        text: `✅ **Healed.** Selector updated from \`${h.old_selector ?? '(none)'}\` → \`${h.new_selector}\`. Same collector, zero downtime. Scar #${h.scar_number} logged. Still watching ${h.product_name}.`,
+        text: `✅ Sir — recovered. Selector re-plumbed \`${h.old_selector ?? '(none)'}\` → \`${h.new_selector}\`. Same collector, zero downtime, Scar #${h.scar_number} entered in the log. ${h.product_name} remains under my eye.`,
         ts: Date.now(),
       }]);
     }
@@ -314,8 +315,12 @@ export default function ChatPanel() {
       const parsedRes = await fetchJson<ParsedIntent>('/api/watches/parse-intent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: msg }) });
       const parsed = parsedRes.data;
 
-      if (!parsedRes.ok || !parsed || parsed.error) {
-        setMessages((prev) => [...prev, { id: uid(), role: 'agent', kind: 'normal', text: 'I couldn\u2019t parse that into a watch. Try: \u201cWatch the iPhone 17 Pro and alert me when it drops below $949\u201d.', ts: Date.now() }]);
+      if (!parsedRes.ok || !parsed || parsed.error || parsed.kind === 'ask') {
+        // Questions and conversation ops (ask/cancel/list/check) go to the
+        // agent brain — it answers from real state, no watch created.
+        const chatRes = await fetchJson<{ message?: string }>('/api/agent/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: msg }) });
+        const text = chatRes.data?.message ?? 'I couldn\u2019t parse that into a watch. Try: \u201cWatch the iPhone 17 Pro and alert me when it drops below $949\u201d.';
+        setMessages((prev) => [...prev, { id: uid(), role: 'agent', kind: 'normal', text, ts: Date.now() }]);
         return;
       }
 
@@ -330,7 +335,7 @@ export default function ChatPanel() {
           body: JSON.stringify({
             label: parsed.label ?? 'external watch',
             url: parsed.url,
-            intent: `Extract: product name, ${parsed.field === 'stock' ? 'stock status' : 'price as a number'}`,
+            intent: parsed.field === 'content' ? 'Extract: the page\u2019s main title and the latest post or item heading' : `Extract: product name, ${parsed.field === 'stock' ? 'stock status' : 'price as a number'}`,
             field: parsed.field ?? 'price',
             operator: parsed.operator ?? 'changed',
             target: parsed.target ?? null,

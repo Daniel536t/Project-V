@@ -7,7 +7,8 @@ import { MODELS } from "./constants";
 import { STORE_DOMAINS } from "./config";
 import { createWatchFromIntent, runScrapePass, type RunResult } from "./sense";
 import { deleteWatch, getWatches, type WatchRow } from "./db";
-import { FEATURED_PRODUCTS, detectProductName, detectProductId } from "./store-shared";
+import { FEATURED_PRODUCTS, detectProductName, detectProductId, featuredById } from "./store-shared";
+import { getProduct } from "./store";
 import { HN_NAME, HN_URL } from "./live";
 
 const STORE_URL = "/api/store/html";
@@ -26,7 +27,7 @@ export interface ExternalIntent {
   kind: "external";
   url: string;
   label: string;
-  field: "price" | "stock";
+  field: "price" | "stock" | "content";
   operator: string;
   target: string | null;
 }
@@ -64,6 +65,11 @@ export function parseExternalIntentDeterministic(msg: string): ExternalIntent | 
     if (/(over|above|more than)/i.test(targetM[0])) operator = ">";
     else if (/==|exactly/i.test(targetM[0])) operator = "==";
     else operator = "<";
+  } else {
+    // No price, no stock language — it's a page-change watch ("tell me when
+    // a new post appears"). The collector extracts the page headline; the
+    // diff is on content, not a phantom price that doesn't exist.
+    return { kind: "external", url, label: `${domain} · page change`, field: "content", operator: "changed", target: null };
   }
 
   return { kind: "external", url, label: `${domain} · ${operator === "changed" ? "any change" : operator + " $" + target}`, field: "price", operator, target };
@@ -99,6 +105,7 @@ const CRYPTO_SLUGS: Array<{ re: RegExp; slug: string; name: string }> = [
 export function parseCryptoIntentDeterministic(msg: string): ExternalIntent | null {
   const m = msg.trim();
   if (/(https?:\/\/)/i.test(m)) return null; // an explicit URL → external parser owns it
+  if (/\?/.test(m) || /(what|how much|current|right now|price of)/i.test(m)) return null; // questions → ask mode
   if (!/(watch|track|monitor|alert|notify|ping|tell me)/i.test(m)) return null;
   if (!/(price|above|below|over|under|drop|drops|rises?|falls?|hits?)/i.test(m)) return null;
   const coin = CRYPTO_SLUGS.find((c) => c.re.test(m));
@@ -320,6 +327,116 @@ export interface AgentReply {
   parsed?: ParsedIntent;
 }
 
+// ---- Ask mode: one-off fetch & answer — SENSE answers, nothing watched ----
+
+/** A question about data, not a request to keep watching. */
+export function isAsk(msg: string): boolean {
+  // Watch-intent markers own the message — never steal them.
+  if (/(watch|track|monitor|alert|notify|ping|let me know|when\b|below|above|under|over)/i.test(msg)) return false;
+  if (/^\s*(list|show)\b/i.test(msg)) return false;
+  return /(what|how much|how many|current|right now|price|stock|in stock|available|check|look up|tell me about|status)/i.test(msg) || /\?\s*$/.test(msg);
+}
+
+/** Pick the watch a message names — by product/label/URL overlap, not blind first-row. */
+function pickWatch(watches: WatchRow[], msg: string): WatchRow | null {
+  if (watches.length === 0) return null;
+  const m = msg.toLowerCase();
+  const tokens = m.split(/[^a-z0-9.]+/).filter((t) => t.length > 2);
+  const scored = watches
+    .map((w) => {
+      const hay = `${w.product_name ?? ""} ${w.label ?? ""} ${w.url ?? ""}`.toLowerCase();
+      let score = 0;
+      for (const t of tokens) if (hay.includes(t)) score += t.length;
+      return { w, score };
+    })
+    .sort((a, b) => b.score - a.score);
+  return scored[0].score > 0 ? scored[0].w : watches[0];
+}
+
+async function askByUrl(url: string, msg: string, nameHint?: string): Promise<AgentReply> {
+  const domain = (() => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; } })();
+  const existing = (await getWatches()).find((w) => w.url === url);
+  if (existing) {
+    const isStorePage = existing.url === STORE_URL || existing.url.startsWith("/api/store");
+    if (isStorePage) {
+      // Store scrapes are local and instant — answer synchronously.
+      const run = await runScrapePass(existing.id).catch(() => null);
+      if (run?.value) {
+        return {
+          action: "ask",
+          message: `Sir — fresh reading on ${run.watch.product_name ?? existing.label}: ${run.value}. Straight from the page, just now. Shall I set a proper watch on it?`,
+          watch: run.watch,
+          watches: await getWatches(),
+        };
+      }
+    } else {
+      // External collector runs take 20–90s — the reading arrives via SSE.
+      void runScrapePass(existing.id);
+      return {
+        action: "ask",
+        message: `Sir — checking ${domain} for you now. The collector takes a moment; the reading will arrive presently. Same collector as your watch (${existing.id}).`,
+        watches: await getWatches(),
+      };
+    }
+  }
+  // No reader on this page yet — build one, honestly labeled as slow.
+  const watch = await createWatchFromIntent({
+    label: `ask · ${domain}`,
+    url,
+    intent: "Extract: page title and main heading; product name, current price and stock status if present",
+    field: "price",
+    operator: "changed",
+    target: null,
+    query: nameHint ?? domain,
+    source: "external",
+  });
+  void runScrapePass(watch.id);
+  return {
+    action: "ask",
+    message: `Sir — I don't have a reader on ${domain} yet. I'm briefing one now (60–90 seconds); the answer arrives the moment the first sweep lands. I'll keep the collector on hand so next time it's instant — say "cancel it" if you'd rather I didn't.`,
+    watch,
+    watches: await getWatches(),
+  };
+}
+
+async function handleAsk(msg: string): Promise<AgentReply | null> {
+  if (!isAsk(msg)) return null;
+  const urlM = msg.match(/(https?:\/\/[^\s]+)/i);
+  const productId = detectProductId(msg);
+
+  // 1) Store product question — instant answer from real store state.
+  if (productId && !urlM) {
+    const wanted = featuredById(productId)?.name ?? productId;
+    const product = await getProduct().catch(() => null);
+    if (product && product.name.toLowerCase() === wanted.toLowerCase()) {
+      return {
+        action: "ask",
+        message: `Sir — ${product.name} sits at $${product.price}, ${product.in_stock ? "in stock" : "currently unavailable"}. That reading is live from the store itself. Shall I set a watch on it?`,
+        watches: await getWatches(),
+      };
+    }
+    return {
+      action: "ask",
+      message: product
+        ? `Sir, the shelf currently holds ${product.name} at $${product.price} — ${wanted} isn't on it at the moment. Say "watch ${wanted}" and I'll take it from there, or point me at any page.`
+        : `Sir — I couldn't reach the store just now. One moment, and ask again?`,
+      watches: await getWatches(),
+    };
+  }
+
+  // 2) Crypto price question — through the same CoinMarketCap pipeline.
+  if (!urlM) {
+    const coin = CRYPTO_SLUGS.find((c) => c.re.test(msg));
+    if (coin) {
+      return askByUrl(`https://coinmarketcap.com/currencies/${coin.slug}/`, msg, coin.name);
+    }
+    return null; // not an ask SENSE can serve — let watch parsing try
+  }
+
+  // 3) URL question — reuse the collector, or build one.
+  return askByUrl(urlM[1].replace(/[.,;:!?)]+$/, ""), msg);
+}
+
 export async function handleAgentMessage(msg: string): Promise<AgentReply> {
   const trimmed = msg.trim();
   const watches = await getWatches();
@@ -338,40 +455,47 @@ export async function handleAgentMessage(msg: string): Promise<AgentReply> {
   }
 
   if (/(cancel|delete|remove|stop|pause)/i.test(trimmed)) {
-    const target = watches[0];
-    if (!target) return { action: "cancel", message: "Nothing to cancel yet.", watches };
+    const target = pickWatch(watches, trimmed);
+    if (!target) return { action: "cancel", message: "Nothing to cancel yet, Sir.", watches };
     await deleteWatch(target.id);
     return {
       action: "cancel",
-      message: `Done — I stopped watching ${target.label ?? target.product_name ?? target.id}.`,
+      message: `Sir — I've stopped watching ${target.label ?? target.product_name ?? target.id}. The collector stays on the books should you want it again.`,
       watches: await getWatches(),
     };
   }
 
   if (/(check|scrape|update me|status|how.*(going|looking))/i.test(trimmed)) {
-    const target = watches[0];
-    if (!target) {
+    const target = pickWatch(watches, trimmed);
+    if (target) {
+      const run: RunResult = await runScrapePass(target.id);
+      const suffix = run.conditionMet
+        ? ` 🔔 Condition met — ${run.value}.`
+        : run.value != null
+          ? ` Currently ${target.field === "price" ? `$${run.value}` : run.value}.`
+          : " I couldn't read a value — still watching.";
+      return {
+        action: "check",
+        message: `Sir — I checked ${target.label ?? target.product_name ?? target.id}.${suffix}`,
+        watch: run.watch,
+        watches: await getWatches(),
+        alert: run.alerted ? run.watch : undefined,
+        events: run.events,
+      };
+    }
+    // No watch and no URL → gentle refusal; a URL falls through to ask mode.
+    if (!/(https?:\/\/)/i.test(trimmed)) {
       return {
         action: "check",
         message: "I'm not watching anything yet — try \"Watch the iPhone 17 Pro and alert me when it drops below $949\".",
         watches,
       };
     }
-    const run: RunResult = await runScrapePass(target.id);
-    const suffix = run.conditionMet
-      ? ` 🔔 Condition met — ${run.value}.`
-      : run.value != null
-        ? ` Currently ${target.field === "price" ? `$${run.value}` : run.value}.`
-        : " I couldn't read a value — still watching.";
-    return {
-      action: "check",
-      message: `Checked ${target.label ?? target.product_name ?? target.id}.${suffix}`,
-      watch: run.watch,
-      watches: await getWatches(),
-      alert: run.alerted ? run.watch : undefined,
-      events: run.events,
-    };
   }
+
+  // One-off question — SENSE answers, no watch created.
+  const ask = await handleAsk(trimmed);
+  if (ask) return ask;
 
   // LIVE semantic watch (Hacker News → "top N") — a real Bright Data collector.
   // Deterministic first; the NIM fallback waits until every cheap parser below
@@ -406,7 +530,9 @@ export async function handleAgentMessage(msg: string): Promise<AgentReply> {
     const watch = await createWatchFromIntent({
       label: extParsed.label,
       url: extParsed.url,
-      intent: `Extract: product name, ${extParsed.field === "stock" ? "stock status" : "price as a number"}`,
+      intent: extParsed.field === "content"
+        ? "Extract: the page's main title and the latest post or item heading"
+        : `Extract: product name, ${extParsed.field === "stock" ? "stock status" : "price as a number"}`,
       field: extParsed.field,
       operator: extParsed.operator,
       target: extParsed.target,
