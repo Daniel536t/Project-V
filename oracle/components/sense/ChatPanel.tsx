@@ -266,7 +266,7 @@ export default function ChatPanel() {
     fetch('/api/alerts/voice', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ product_name: alert.product_name, value: alert.value, operator: alert.operator, target: alert.target, previous: alert.previous, field: alert.field, stock: alert.stock, via: alert.via, elapsed_s: alert.elapsed_s, collector_id: alert.collector_id, detail: alert.detail }),
+      body: JSON.stringify({ product_name: alert.product_name, value: alert.value, operator: alert.operator, target: alert.target, previous: alert.previous, field: alert.field, stock: alert.stock, via: alert.via, elapsed_s: alert.elapsed_s, collector_id: alert.collector_id, detail: alert.detail, fulfilled: alert.fulfilled }),
     }).then(r => r.json()).then(d => {
       if (d.voice) setMessages((prev) => prev.map((m) => m.alert && m.alert.watch_id === alert.watch_id && !m.text ? { ...m, text: d.voice } : m));
     }).catch(() => {});

@@ -54,6 +54,8 @@ Tier 1 means the demo never stalls — <500ms recovery on any template flip. Tie
 
 All four are edge-triggered — an alert fires exactly once on the false→true transition, and never repeats until the condition clears and re-arms.
 
+**Nothing watches forever.** A watch that fulfils its promise (alert fires) stands down immediately — status `completed`, scheduler skips it, and the briefing closes with the stand-down. A watch that never triggers retires after a 7-day TTL (`WATCH_TTL_DAYS`, env-overridable) so long-tail pages don't poll indefinitely. Re-arming a fulfilled external watch reuses the same collector — same ID, instant, zero rebuild cost.
+
 ### The Scar Log — an immune-system record
 
 Every heal is permanently recorded: the original intent, the old selector that broke, the new selector that recovered, the template transition, confidence score, recovery path (Bright Data or local fallback), and recovery time. The Scar Log panel (sidebar → Tools → Scar Log) is a slide-over ledger showing every break SENSE survived.

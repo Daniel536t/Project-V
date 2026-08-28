@@ -18,6 +18,8 @@ interface VoiceInput {
   elapsed_s?: number | null;
   collector_id?: string | null;
   detail?: string | null;
+  /** True when this alert fulfils the watch — the briefing closes with the stand-down. */
+  fulfilled?: boolean;
 }
 
 /**
@@ -32,7 +34,8 @@ const SENSE_REGISTER =
   "Maximum 3 short sentences. Plain text only — no emojis, no markdown, no lists. " +
   "Never invent data that was not provided; if a fact is unknown, omit it. " +
   "If no previous reading is provided, this is the FIRST reading — never mention trends, prior sweeps, or how the price moved before. " +
-  "You are SENSE — never call yourself anything else.";
+  "You are SENSE — never call yourself anything else. " +
+  "If the watch is fulfilled, close by noting you have stood down and the collector is kept for instant re-arming.";
 
 /** One-line fact summary the LLM and the fallback both render from. */
 function factSheet(input: VoiceInput): string {
@@ -47,6 +50,7 @@ function factSheet(input: VoiceInput): string {
     input.via ? `source: ${input.via}` : null,
     input.elapsed_s != null ? `fetch time: ${input.elapsed_s}s` : null,
     input.collector_id ? `collector: ${input.collector_id}` : null,
+    input.fulfilled ? "watch status: fulfilled — standing down" : null,
   ].filter(Boolean);
   return facts.join("\n");
 }
@@ -61,6 +65,7 @@ function templateVoice(input: VoiceInput): string {
   const pp = input.previous ? parseFloat(String(input.previous).replace(/[^0-9.]/g, "")) : null;
   const was = input.previous ? ` It read ${input.previous} at the last sweep.` : "";
   const via = input.via ? ` Fetched via ${input.via}${input.elapsed_s != null ? ` in ${input.elapsed_s}s` : ""}.` : "";
+  const stood = input.fulfilled ? ` The watch has fulfilled its purpose and stood down — the collector waits, should you want it again.` : "";
 
   if (input.field === "content") {
     return `Sir — the page has changed under our watch. It now reads "${input.value}", where before it said "${input.previous ?? "something else"}". I judged the difference worth your attention.${via}`;
@@ -68,30 +73,30 @@ function templateVoice(input: VoiceInput): string {
   if (input.field === "stock" || input.operator === "in_stock" || input.operator === "out_of_stock") {
     const back = /in stock/i.test(input.value ?? "") || input.operator === "in_stock";
     return back
-      ? `Sir — ${input.product_name} is back in stock as of this sweep. If you mean to move, I would not dawdle.${via}`
-      : `Sir — ${input.product_name} has gone out of stock, I'm afraid. I'll signal you the instant it returns.${via}`;
+      ? `Sir — ${input.product_name} is back in stock as of this sweep. If you mean to move, I would not dawdle.${via}${stood}`
+      : `Sir — ${input.product_name} has gone out of stock, I'm afraid. I'll signal you the instant it returns.${via}${stood}`;
   }
   if (input.operator === "spike") {
     const pct = pp && pp > 0 ? Math.round(((pv - pp) / pp) * 100) : 0;
-    return `Sir — a word of caution. ${input.product_name} has jumped from $${pp} to ${input.value} (+${pct}%), which reads to me as a correction rather than a clearance. I'd hold position and keep the watch trained on it.${via}`;
+    return `Sir — a word of caution. ${input.product_name} has jumped from $${pp} to ${input.value} (+${pct}%), which reads to me as a correction rather than a clearance. I'd hold position and keep the watch trained on it.${via}${stood}`;
   }
   if (input.operator === "drop") {
     const pct = pp && pp > 0 ? Math.round(((pp - pv) / pp) * 100) : 0;
-    return `Sir — ${input.product_name} has slipped from $${pp} to ${input.value} (−${pct}%). Notable, though your ${input.target ? `$${input.target} target` : "threshold"} lies further below. I shall keep sweeping.${via}`;
+    return `Sir — ${input.product_name} has slipped from $${pp} to ${input.value} (−${pct}%). Notable, though your ${input.target ? `$${input.target} target` : "threshold"} lies further below. I shall keep sweeping.${via}${stood}`;
   }
   if (input.operator === "<" && pt != null && !isNaN(pt)) {
     const diff = pt - pv;
     return diff <= 10
-      ? `Sir — it's at ${input.value}, a mere $${diff.toFixed(0)} from your $${pt} threshold. The watch nearly spoke sooner.`
-      : `Sir — the moment has arrived. ${input.product_name} is at ${input.value}, which is $${diff.toFixed(0)} beneath your $${pt} target.${was}${input.stock != null ? (input.stock ? " In stock." : " Currently unavailable, mind you.") : ""} The watch did its work quietly.${via}`;
+      ? `Sir — it's at ${input.value}, a mere $${diff.toFixed(0)} from your $${pt} threshold. The watch nearly spoke sooner.${stood}`
+      : `Sir — the moment has arrived. ${input.product_name} is at ${input.value}, which is $${diff.toFixed(0)} beneath your $${pt} target.${was}${input.stock != null ? (input.stock ? " In stock." : " Currently unavailable, mind you.") : ""} The watch did its work quietly.${via}${stood}`;
   }
   if (input.operator === ">" && pt != null && !isNaN(pt)) {
-    return `Sir — ${input.product_name} has climbed to ${input.value}, now above your $${pt} ceiling.${was} I shall flag it again should it climb further.${via}`;
+    return `Sir — ${input.product_name} has climbed to ${input.value}, now above your $${pt} ceiling.${was} I shall flag it again should it climb further.${via}${stood}`;
   }
   if (input.operator === "<=") {
-    return `Sir — it has broken through. ${input.product_name} sits at ${input.value} against your ${input.target} threshold.${input.detail ? ` The match: "${input.detail}".` : ""} Your attention is requested.${via}`;
+    return `Sir — it has broken through. ${input.product_name} sits at ${input.value} against your ${input.target} threshold.${input.detail ? ` The match: "${input.detail}".` : ""} Your attention is requested.${via}${stood}`;
   }
-  return `Sir — ${input.product_name} now reads ${input.value}.${was} I thought you'd want to know.${via}`;
+  return `Sir — ${input.product_name} now reads ${input.value}.${was} I thought you'd want to know.${via}${stood}`;
 }
 
 /**

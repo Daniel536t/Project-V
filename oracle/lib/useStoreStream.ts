@@ -29,6 +29,8 @@ export interface AlertEvent {
   stock?: boolean | null;
   via?: string | null;
   elapsed_s?: number | null;
+  /** True when this alert fulfils the watch — it stands down after this. */
+  fulfilled?: boolean;
   /** "alert" (default), "watch_ready" when a pending external watch gets data. */
   kind?: string;
   /** Set on watch_ready — the collector ID that was assigned. */

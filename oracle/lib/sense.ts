@@ -20,6 +20,7 @@ import { detectProductId } from "./store-shared";
 import { scrapeStore, scrapeLocalRecovery, parsePrice, storeScrapeUrl, type ExtractField, type ScrapeOutcome } from "./scraper";
 import { extractBySelector } from "./local-extractor";
 import { emitAlert, emitLog, emitHeal } from "./stream";
+import { WATCH_TTL_DAYS } from "./config";
 import { healWatch, STORE_COLLECTOR_ID } from "./heal";
 import {
   HN_COLLECTOR_ID,
@@ -151,6 +152,20 @@ export async function createWatchFromIntent(input: {
       (w) => w.source === "external" && w.url === url,
     );
     if (existing) {
+      if (existing.status === "completed" || existing.status === "expired") {
+        // A fulfilled/retired watch can be taken up again — same collector,
+        // instant re-arm. Same ID across re-arms, same story as heals.
+        await updateWatch(existing.id, {
+          status: "watching",
+          next_check_at: new Date(),
+          last_condition_met: false,
+        });
+        emitLog(
+          "info",
+          `Re-armed ${existing.id} for ${domain} — collector ${existing.collector_id ?? "(creating)"} reused, same ID.`,
+        );
+        return (await getWatch(existing.id))!;
+      }
       emitLog(
         "info",
         `Already watching ${domain} (${existing.id}) — reusing collector ${existing.collector_id ?? "(creating)"}`,
@@ -424,8 +439,12 @@ async function runLiveScrapePass(
       detail,
       via: "brightdata-collector",
       elapsed_s: elapsedS,
+      fulfilled: true,
     });
     events.push("alert");
+    // Promise fulfilled — stand down (same lifecycle as store watches).
+    await updateWatch(watch.id, { status: "completed", next_check_at: null });
+    emitLog("info", `Watch ${watch.id} fulfilled — standing down. Collector ${watch.collector_id ?? ""} kept for instant re-arming.`);
   }
 
   return { watch: (await getWatch(watch.id))!, events, alerted, conditionMet: met, healed: false, value };
@@ -541,8 +560,12 @@ async function runExternalScrapePass(
       stock: inStock,
       via: "brightdata-collector",
       elapsed_s: elapsedS,
+      fulfilled: true,
     });
     events.push("alert");
+    // Promise fulfilled — stand down (same lifecycle as store watches).
+    await updateWatch(watch.id, { status: "completed", next_check_at: null });
+    emitLog("info", `Watch ${watch.id} fulfilled — standing down. Collector ${collectorId} kept for instant re-arming.`);
   }
 
   return { watch: (await getWatch(watch.id))!, events, alerted, conditionMet: met, healed: false, value };
@@ -753,8 +776,13 @@ async function runScrapePassInner(
       previous: watch.previous_value ?? undefined,
       stock: inStock,
       via: (outcome as ScrapeOutcome).source,
+      fulfilled: true,
     });
     events.push("alert");
+    // Promise fulfilled — the watch stands down. No indefinite polling; the
+    // collector stays on the books so re-arming later is instant.
+    await updateWatch(watchId, { status: "completed", next_check_at: null });
+    emitLog("info", `Watch ${watchId} fulfilled — standing down. Collector kept for instant re-arming.`);
   }
 
   watch = (await getWatch(watchId))!;
@@ -766,10 +794,30 @@ async function runScrapePassInner(
 export async function scrapeDueWatches(): Promise<RunResult[]> {
   const watches = await getWatches();
   const now = Date.now();
+  const ttlMs = WATCH_TTL_DAYS * 24 * 3600 * 1000;
   const results: RunResult[] = [];
   for (const w of watches) {
+    // Terminal rule: nothing watches forever. A fulfilled watch already
+    // stood down; one that never triggers retires at the TTL so long-tail
+    // pages don't poll indefinitely either.
+    if (
+      w.status !== "completed" &&
+      w.status !== "expired" &&
+      w.created_at &&
+      now - new Date(w.created_at).getTime() > ttlMs
+    ) {
+      await updateWatch(w.id, { status: "expired", next_check_at: null });
+      emitLog("info", `Watch ${w.id} retired — TTL of ${WATCH_TTL_DAYS} days reached without triggering.`);
+      continue;
+    }
     const due = w.next_check_at == null || new Date(w.next_check_at).getTime() <= now;
-    const idle = w.status !== "alerted" && w.status !== "checking" && w.status !== "broken" && w.status !== "pending";
+    const idle =
+      w.status !== "alerted" &&
+      w.status !== "checking" &&
+      w.status !== "broken" &&
+      w.status !== "pending" &&
+      w.status !== "completed" &&
+      w.status !== "expired";
     if (due && idle) {
       try {
         results.push(await runScrapePass(w.id));
