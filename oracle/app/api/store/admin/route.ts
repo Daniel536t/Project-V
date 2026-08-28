@@ -65,7 +65,9 @@ export async function POST(req: Request) {
       // Template A · in stock), clear watches, scars, era heal ledger, scrape
       // history, and the terminal log history.
       updated = await selectProduct("iphone-17-pro");
-      await updateProduct({ bot_detection: false }); // the challenge-page toggle is demo state too
+      // the challenge-page toggle is demo state too — re-read so the
+      // response reflects the final state, not a pre-update snapshot
+      updated = await updateProduct({ bot_detection: false });
       await deleteAllWatches();
       await getPool().query("DELETE FROM heal_ledger");
       await getPool().query("DELETE FROM era_heal_ledger");
